@@ -136,12 +136,18 @@ export default function PresentationNode({
             </span>
           )}
           <div className="node-progress">
-            <div className="node-progress-count">
+            <div
+              className={clsx('node-progress-count', {
+                completed: completed,
+              })}
+            >
               {acquired} / {visible}
             </div>
             <div className="node-progress-bar">
               <div
-                className="node-progress-bar-amount"
+                className={clsx('node-progress-bar-amount', {
+                  completed: completed,
+                })}
                 style={{ width: percent(acquired / visible) }}
               />
             </div>

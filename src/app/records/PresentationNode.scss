@@ -21,6 +21,9 @@
       font-size: 12px;
       text-transform: none;
       letter-spacing: 0;
+      &.completed {
+        color: #f5dc56;
+      }
     }
     .node-progress-bar {
       background: #666;
@@ -31,6 +34,9 @@
     .node-progress-bar-amount {
       background: #ccc;
       height: 2px;
+      &.completed {
+        background: #f5dc56;
+      }
     }
   }
 
