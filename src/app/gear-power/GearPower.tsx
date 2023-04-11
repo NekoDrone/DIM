@@ -5,20 +5,21 @@ import { SetFilterButton } from 'app/dim-ui/SetFilterButton';
 import BucketIcon from 'app/dim-ui/svgs/BucketIcon';
 import { t } from 'app/i18next-t';
 import { locateItem } from 'app/inventory/locate-item';
-import { maxLightItemSet } from 'app/loadout-drawer/auto-loadouts';
-import { getLight } from 'app/loadout-drawer/loadout-utils';
+import { powerLevelSelector } from 'app/inventory/store/selectors';
 import { classFilter } from 'app/search/search-filters/known-values';
 import { AppIcon, powerActionIcon } from 'app/shell/icons';
+import { RootState } from 'app/store/types';
+import { LookupTable } from 'app/utils/util-types';
 import clsx from 'clsx';
 import { BucketHashes } from 'data/d2/generated-enums';
 import { useSelector } from 'react-redux';
 import { useSubscription } from 'use-subscription';
 import Sheet from '../dim-ui/Sheet';
-import { allItemsSelector, storesSelector } from '../inventory/selectors';
-import { showGearPower$ } from './gear-power';
+import { storesSelector } from '../inventory/selectors';
 import styles from './GearPower.m.scss';
+import { showGearPower$ } from './gear-power';
 
-const bucketClassNames: Partial<Record<BucketHashes, string>> = {
+const bucketClassNames: LookupTable<BucketHashes, string> = {
   [BucketHashes.KineticWeapons]: styles.kinetic,
   [BucketHashes.EnergyWeapons]: styles.energy,
   [BucketHashes.PowerWeapons]: styles.power,
@@ -31,7 +32,6 @@ const bucketClassNames: Partial<Record<BucketHashes, string>> = {
 
 export default function GearPower() {
   const stores = useSelector(storesSelector);
-  const allItems = useSelector(allItemsSelector);
   const reset = () => {
     showGearPower$.next(undefined);
   };
@@ -39,14 +39,12 @@ export default function GearPower() {
   const selectedStoreId = useSubscription(showGearPower$);
   const selectedStore = stores.find((s) => s.id === selectedStoreId);
 
-  if (!selectedStore) {
+  const powerLevel = useSelector((state: RootState) => powerLevelSelector(state, selectedStoreId));
+
+  if (!selectedStore || !powerLevel) {
     return null;
   }
 
-  const { unrestricted, equippable } = maxLightItemSet(allItems, selectedStore);
-  const maxBasePower = getLight(selectedStore, unrestricted);
-  const equippableMaxBasePower = getLight(selectedStore, equippable);
-  const powerFloor = Math.floor(maxBasePower);
   const header = (
     <div className={styles.gearPowerHeader}>
       <img src={selectedStore.icon} />
@@ -54,13 +52,16 @@ export default function GearPower() {
         <h1>{selectedStore.name}</h1>
         <h1 className={styles.powerLevel}>
           <AppIcon icon={powerActionIcon} />
-          <FractionalPowerLevel power={maxBasePower} />
+          <FractionalPowerLevel power={powerLevel.maxGearPower} />
         </h1>
       </div>
     </div>
   );
 
-  const exampleItem = equippable.find((i) => i.classType === selectedStore.classType);
+  const exampleItem = powerLevel.highestPowerItems.find(
+    (i) => i.classType === selectedStore.classType
+  );
+  const powerFloor = Math.floor(powerLevel.maxGearPower);
   const classFilterString = exampleItem && classFilter.fromItem!(exampleItem);
   const maxItemsSearchString = classFilterString && `${classFilterString} is:maxpower`;
 
@@ -68,20 +69,23 @@ export default function GearPower() {
     <Sheet onClose={reset} header={header} sheetClassName={styles.gearPowerSheet}>
       <div className={styles.gearPowerSheetContent}>
         <div className={styles.gearGrid}>
-          {unrestricted.map((i) => {
+          {powerLevel.highestPowerItems.map((i) => {
             const powerDiff = (powerFloor - i.power) * -1;
             const diffSymbol = powerDiff >= 0 ? '+' : '';
             const diffClass =
               powerDiff > 0 ? styles.positive : powerDiff < 0 ? styles.negative : styles.neutral;
             return (
-              <div key={i.id} className={clsx(bucketClassNames[i.bucket.hash], styles.gearItem)}>
+              <div
+                key={i.id}
+                className={clsx(bucketClassNames[i.bucket.hash as BucketHashes], styles.gearItem)}
+              >
                 <div onClick={() => locateItem(i)}>
                   <BungieImage src={i.icon} className={styles.itemImage} />
                 </div>
                 <div className={styles.gearItemInfo}>
                   <div className={styles.power}>{i.power}</div>
                   <div className={styles.statMeta}>
-                    <BucketIcon className={styles.bucketImage} item={i} />
+                    <BucketIcon className={styles.bucketImage} bucketHash={i.bucket.hash} />
                     <div className={diffClass}>
                       {diffSymbol}
                       {powerDiff}
@@ -92,7 +96,7 @@ export default function GearPower() {
             );
           })}
         </div>
-        {selectedStore.stats.maxGearPower?.statProblems?.notOnStore && (
+        {powerLevel.problems.notOnStore && (
           <div className={styles.notes}>
             <AlertIcon /> {t('Loadouts.OnWrongCharacterWarning')}
             {maxItemsSearchString && (
@@ -103,7 +107,7 @@ export default function GearPower() {
             )}
           </div>
         )}
-        {maxBasePower !== equippableMaxBasePower && (
+        {powerLevel.problems.notEquippable && (
           <>
             <div className={styles.footNote}>* {t('Loadouts.EquippableDifferent1')}</div>
             <div className={styles.footNote}>{t('Loadouts.EquippableDifferent2')}</div>

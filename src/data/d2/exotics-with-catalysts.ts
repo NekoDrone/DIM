@@ -15,6 +15,7 @@ const exoticWeaponHashesWithCatalyst = new Set<number>([
   1345867571, // Coldheart
   1363238943, // Ruinous Effigy
   1363886209, // Gjallarhorn
+  1473821207, // Revision Zero
   1508896098, // The Wardcliff Coil
   1541131350, // Cerberus+1
   1594120904, // No Time to Explain
@@ -35,6 +36,7 @@ const exoticWeaponHashesWithCatalyst = new Set<number>([
   2362471601, // Rat King
   2591746970, // Leviathan's Breath
   2603483885, // Cloudstrike
+  2694576561, // Two-Tailed Fox
   2812324401, // Dead Messenger
   2816212794, // Bad Juju
   2856683562, // SUROS Regime
@@ -60,6 +62,7 @@ const exoticWeaponHashesWithCatalyst = new Set<number>([
   3628991658, // Graviton Lance
   3628991659, // Vigilance Wing
   3654674561, // Dead Man's Tale
+  3659414143, // Verglas Curve
   3664831848, // Heartshadow
   3761898871, // Lorentz Driver
   3766045777, // Black Talon
@@ -73,6 +76,7 @@ const exoticWeaponHashesWithCatalyst = new Set<number>([
   4190156464, // Merciless
   4255268456, // Skyburner's Oath
   4289226715, // Vex Mythoclast
+  4293613902, // Quicksilver Storm
 ]);
 
 export default exoticWeaponHashesWithCatalyst;

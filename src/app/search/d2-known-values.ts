@@ -1,4 +1,7 @@
-import { DestinyEnergyType, TierType } from 'bungie-api-ts/destiny2';
+import { CustomStatWeights } from '@destinyitemmanager/dim-api-types';
+import { HashLookup } from 'app/utils/util-types';
+import { TierType } from 'bungie-api-ts/destiny2';
+
 import { D2CalculatedSeason, D2SeasonInfo } from 'data/d2/d2-season-info';
 import {
   BreakerTypeHashes,
@@ -66,14 +69,17 @@ export const armor2PlugCategoryHashesByName = {
 /** The consistent armour 2 mod category hashes. This excludes raid, combat and legacy slots as they tend to change. */
 export const armor2PlugCategoryHashes: number[] = Object.values(armor2PlugCategoryHashesByName);
 
-export const killTrackerObjectivesByHash: Record<number, 'pvp' | 'pve' | undefined> = {
-  74070459: 'pvp', // Objective "Crucible Opponents Defeated" found inside InventoryItem[38912240] "Crucible Tracker"
-  1501870536: 'pvp', // Objective "Crucible Opponents Defeated" found inside InventoryItem[2285636663] "Crucible Tracker"
-  2439952408: 'pvp', // Objective "Crucible Opponents Defeated" found inside InventoryItem[3244015567] "Crucible Tracker"
-  73837075: 'pve', // Objective "Enemies Defeated" found inside InventoryItem[905869860] "Kill Tracker"
-  90275515: 'pve', // Objective "Enemies Defeated" found inside InventoryItem[2240097604] "Kill Tracker"
-  2579044636: 'pve', // Objective "Enemies Defeated" found inside InventoryItem[2302094943] "Kill Tracker"
-  2285418970: undefined, //
+export const killTrackerObjectivesByHash: HashLookup<'pvp' | 'pve' | 'gambit'> = {
+  1501870536: 'pvp', // Objective "Crucible Opponents Defeated" inside 2285636663 "Crucible Tracker"
+  2439952408: 'pvp', // Objective "Crucible Opponents Defeated" inside 3244015567 "Crucible Tracker"
+  74070459: 'pvp', // Objective "Crucible Opponents Defeated" inside 38912240 "Crucible Tracker"
+  890482414: 'pvp', // Objective "Crucible opponents defeated" inside 1187045864 "Crucible Memento Tracker"
+  90275515: 'pve', // Objective "Enemies Defeated" inside 2240097604 "Kill Tracker"
+  2579044636: 'pve', // Objective "Enemies Defeated" inside 2302094943 "Kill Tracker"
+  73837075: 'pve', // Objective "Enemies Defeated" inside 905869860 "Kill Tracker"
+  345540971: 'gambit', // Objective "Gambit targets defeated" inside 3915764593 "Gambit Memento Tracker"
+  3387796140: 'pve', // Objective "Nightfall combatants defeated" inside 3915764594 "Nightfall Memento Tracker"
+  2109364169: 'pvp', // Objective "Trials opponents defeated" inside 3915764595 "Trials Memento Tracker"
 };
 export const killTrackerSocketTypeHash = 1282012138;
 
@@ -84,7 +90,7 @@ export const weaponMasterworkY2SocketTypeHash = 2218962841;
 
 /** the stat hash for DIM's artificial armor stat, "Total" */
 export const TOTAL_STAT_HASH = -1000;
-export const CUSTOM_TOTAL_STAT_HASH = -1100;
+export const CUSTOM_TOTAL_STAT_HASH = -111000;
 
 /** hashes representing D2 PL stats */
 export const D2LightStats = [StatHashes.Attack, StatHashes.Defense, StatHashes.Power];
@@ -97,10 +103,16 @@ export const D2ArmorStatHashByName = {
   discipline: StatHashes.Discipline,
   intellect: StatHashes.Intellect,
   strength: StatHashes.Strength,
-};
+} as const;
 
 /** Stats that all (D2) armor should have. */
 export const armorStats = Object.values(D2ArmorStatHashByName);
+
+// a set of base stat weights, all worth the same, "switched on"
+export const evenStatWeights = armorStats.reduce<CustomStatWeights>(
+  (o, statHash) => Object.assign(o, { [statHash]: 1 }),
+  {}
+);
 
 export const D2WeaponStatHashByName = {
   rpm: StatHashes.RoundsPerMinute,
@@ -179,6 +191,9 @@ export const powerfulSources = [
 export const pinnacleSources = [
   73143230, // Pinnacle
 ];
+
+// For loadout mods obliterated from the defs, we instead return this def
+export const deprecatedPlaceholderArmorModHash = 3947616002;
 
 //
 // BUCKETS KNOWN VALUES
@@ -263,16 +278,6 @@ export const ALL_TRAIT = 1434215347;
 /** the trait hash that is used to identify Exotic weapon catalyst plugs */
 export const EXOTIC_CATALYST_TRAIT = 1505531793;
 
-export const energyNamesByEnum: Record<DestinyEnergyType, string> = {
-  [DestinyEnergyType.Any]: 'any',
-  [DestinyEnergyType.Arc]: 'arc',
-  [DestinyEnergyType.Thermal]: 'solar',
-  [DestinyEnergyType.Void]: 'void',
-  [DestinyEnergyType.Ghost]: 'ghost',
-  [DestinyEnergyType.Subclass]: 'subclass',
-  [DestinyEnergyType.Stasis]: 'stasis',
-};
-
 /**
  * Maps TierType to tierTypeName in English and vice versa.
  * The Bungie.net version of this enum is not representative of real game strings.
@@ -305,8 +310,6 @@ export type ItemTierName =
   | 'Legendary'
   | 'Exotic';
 
-export const energyCapacityTypeNames = Object.values(energyNamesByEnum);
-
 export const breakerTypes = {
   any: [BreakerTypeHashes.Stagger, BreakerTypeHashes.Disruption, BreakerTypeHashes.ShieldPiercing],
   barrier: [BreakerTypeHashes.ShieldPiercing],
@@ -319,11 +322,8 @@ export const breakerTypes = {
 };
 
 export const modsWithConditionalStats = {
-  powerfulFriends: 1484685887,
-  radiantLight: 2979815167,
-  chargeHarvester: 2263321587,
-  elementalCapacitor: 3511092054,
-  echoOfPersistence: 2272984671,
-  enhancedElementalCapacitor: 711234314,
-  sparkOfFocus: 1727069360,
+  elementalCapacitor: 3511092054, // InventoryItem "Elemental Capacitor"
+  echoOfPersistence: 2272984671, // InventoryItem "Echo of Persistence"
+  enhancedElementalCapacitor: 711234314, // InventoryItem "Elemental Capacitor"
+  sparkOfFocus: 1727069360, // InventoryItem "Spark of Focus"
 } as const;

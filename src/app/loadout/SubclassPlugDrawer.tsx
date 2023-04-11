@@ -8,15 +8,19 @@ import PlugDrawer from 'app/loadout/plug-drawer/PlugDrawer';
 import { PlugSet } from 'app/loadout/plug-drawer/types';
 import { useD2Definitions } from 'app/manifest/selectors';
 import { compareBy } from 'app/utils/comparators';
-import { getDefaultAbilityChoiceHash, getSocketsByCategoryHash } from 'app/utils/socket-utils';
+import {
+  aspectSocketCategoryHashes,
+  fragmentSocketCategoryHashes,
+  getDefaultAbilityChoiceHash,
+  getSocketsByCategoryHash,
+  subclassAbilitySocketCategoryHashes,
+} from 'app/utils/socket-utils';
 import { uniqBy } from 'app/utils/util';
 import { DestinyProfileResponse } from 'bungie-api-ts/destiny2';
-import { SocketCategoryHashes, StatHashes } from 'data/d2/generated-enums';
+import { StatHashes } from 'data/d2/generated-enums';
 import _ from 'lodash';
 import { useCallback, useMemo } from 'react';
 import { useSelector } from 'react-redux';
-
-const DISPLAYED_PLUG_STATS = [StatHashes.AspectEnergyCapacity];
 
 type PlugSetWithDefaultPlug = PlugSet & { defaultPlug: PluggableInventoryItemDefinition };
 
@@ -37,7 +41,7 @@ export default function SubclassPlugDrawer({
   const defs = useD2Definitions()!;
   const profileResponse = useSelector(profileResponseSelector);
 
-  const { plugSets, aspects, fragments, sortPlugs, sortPlugGroups } = useMemo(() => {
+  const { plugSets, aspects, fragments, sortPlugGroups } = useMemo(() => {
     const initiallySelected = Object.values(socketOverrides)
       .map((hash) => defs.InventoryItem.get(hash))
       .filter(isPluggableItem);
@@ -52,9 +56,6 @@ export default function SubclassPlugDrawer({
     // A flat list of possible subclass plugs we use this to figure out how to sort plugs
     // and the different sections in the plug picker
     const flatPlugs = plugSets.flatMap((set) => set.plugs);
-    const sortPlugs = compareBy((plug: PluggableInventoryItemDefinition) =>
-      flatPlugs.indexOf(plug)
-    );
     // This ensures the plug groups are ordered by the socket order in the item def.
     // The order in the item def matches the order displayed in the game.
     const sortPlugGroups = compareBy(
@@ -64,7 +65,6 @@ export default function SubclassPlugDrawer({
       plugSets,
       aspects,
       fragments,
-      sortPlugs,
       sortPlugGroups,
     };
   }, [defs, profileResponse, socketOverrides, subclass]);
@@ -138,11 +138,10 @@ export default function SubclassPlugDrawer({
       searchPlaceholder={t('Loadouts.SubclassOptionsSearch', { subclass: subclass.name })}
       acceptButtonText={t('Loadouts.Apply')}
       plugSets={plugSets}
-      displayedStatHashes={DISPLAYED_PLUG_STATS}
+      classType={subclass.classType}
       onAccept={handleAccept}
       onClose={onClose}
       isPlugSelectable={isPlugSelectable}
-      sortPlugs={sortPlugs}
       sortPlugGroups={sortPlugGroups}
     />
   );
@@ -179,10 +178,9 @@ function getPlugsForSubclass(
       if (socketGroup.length) {
         const firstSocket = socketGroup[0];
 
-        const isAbilityLikeSocket =
-          category.category.hash === SocketCategoryHashes.Abilities_Abilities ||
-          category.category.hash === SocketCategoryHashes.Abilities_Abilities_LightSubclass ||
-          category.category.hash === SocketCategoryHashes.Super;
+        const isAbilityLikeSocket = subclassAbilitySocketCategoryHashes.includes(
+          category.category.hash
+        );
 
         const defaultPlugHash = isAbilityLikeSocket
           ? getDefaultAbilityChoiceHash(firstSocket)
@@ -204,8 +202,8 @@ function getPlugsForSubclass(
             profileResponse,
             firstSocket.plugSet
           )) {
-            const isAspect = category.category.hash === SocketCategoryHashes.Aspects;
-            const isFragment = category.category.hash === SocketCategoryHashes.Fragments;
+            const isAspect = aspectSocketCategoryHashes.includes(category.category.hash);
+            const isFragment = fragmentSocketCategoryHashes.includes(category.category.hash);
             const isEmptySocket =
               (isAspect || isFragment) && dimPlug.plugDef.hash === defaultPlugHash;
 

@@ -2,7 +2,6 @@ import { destinyVersionSelector } from 'app/accounts/selectors';
 import { compareFilteredItems } from 'app/compare/actions';
 import Dropdown, { Option } from 'app/dim-ui/Dropdown';
 import { t } from 'app/i18next-t';
-import { setNote } from 'app/inventory/actions';
 import { bulkLockItems, bulkTagItems } from 'app/inventory/bulk-actions';
 import { storesSortedByImportanceSelector } from 'app/inventory/selectors';
 import { DimStore } from 'app/inventory/store-types';
@@ -15,7 +14,7 @@ import { stripSockets } from 'app/strip-sockets/strip-sockets-actions';
 import _ from 'lodash';
 import React from 'react';
 import { useSelector } from 'react-redux';
-import { itemTagSelectorList, TagCommand } from '../inventory/dim-item-info';
+import { TagCommand, itemTagSelectorList } from '../inventory/dim-item-info';
 import { DimItem } from '../inventory/item-types';
 import {
   AppIcon,
@@ -29,13 +28,6 @@ import {
 import { loadingTracker } from '../shell/loading-tracker';
 import styles from './ItemActionsDropdown.m.scss';
 
-interface Props {
-  searchQuery: string;
-  filteredItems: DimItem[];
-  searchActive: boolean;
-  fixed?: boolean;
-}
-
 /**
  * Various actions that can be performed on an item
  */
@@ -44,7 +36,14 @@ export default React.memo(function ItemActionsDropdown({
   filteredItems,
   searchQuery,
   fixed,
-}: Props) {
+  bulkNote,
+}: {
+  searchQuery: string;
+  filteredItems: DimItem[];
+  searchActive: boolean;
+  fixed?: boolean;
+  bulkNote: (items: DimItem[]) => Promise<void>;
+}) {
   const dispatch = useThunkDispatch();
   const isPhonePortrait = useIsPhonePortrait();
   const stores = useSelector(storesSortedByImportanceSelector);
@@ -74,15 +73,6 @@ export default React.memo(function ItemActionsDropdown({
     const lockables = filteredItems.filter((i) => i.lockable);
     dispatch(bulkLockItems(lockables, state));
   });
-
-  const bulkNote = () => {
-    const note = prompt(t('Organizer.NotePrompt'));
-    if (note !== null && filteredItems.length) {
-      for (const item of filteredItems) {
-        dispatch(setNote(item, note));
-      }
-    }
-  };
 
   const compareMatching = () => {
     dispatch(compareFilteredItems(searchQuery, filteredItems));
@@ -139,7 +129,7 @@ export default React.memo(function ItemActionsDropdown({
     },
     {
       key: 'note',
-      onSelected: () => bulkNote(),
+      onSelected: () => bulkNote(filteredItems),
       disabled: !searchActive,
       content: (
         <>

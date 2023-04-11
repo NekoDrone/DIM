@@ -17,8 +17,9 @@ import { DEFAULT_ORNAMENTS, EXOTIC_CATALYST_TRAIT } from 'app/search/d2-known-va
 import { refreshIcon } from 'app/shell/icons';
 import AppIcon from 'app/shell/icons/AppIcon';
 import { useThunkDispatch } from 'app/store/thunk-dispatch';
-import { emptySpecialtySocketHashes, isPlugStatActive } from 'app/utils/item-utils';
+import { isPlugStatActive } from 'app/utils/item-utils';
 import { usePlugDescriptions } from 'app/utils/plug-descriptions';
+import { LookupTable } from 'app/utils/util-types';
 import { DestinyItemSocketEntryDefinition } from 'bungie-api-ts/destiny2';
 import clsx from 'clsx';
 import { PlugCategoryHashes, SocketCategoryHashes, StatHashes } from 'data/d2/generated-enums';
@@ -38,18 +39,22 @@ const costStatHashes = [
   StatHashes.ArcCost,
 ];
 
-const whitelistPlugCategoryToLocKey = {
+const whitelistPlugCategoryToLocKey: LookupTable<PlugCategoryHashes, string> = {
   [PlugCategoryHashes.Shader]: 'Shader',
   [PlugCategoryHashes.ShipSpawnfx]: 'Transmat',
   [PlugCategoryHashes.Hologram]: 'Projection',
 };
 
-const socketCategoryToLocKey = {
+const socketCategoryToLocKey: LookupTable<SocketCategoryHashes, string> = {
   [SocketCategoryHashes.Super]: 'Super',
   [SocketCategoryHashes.Abilities_Abilities]: 'Ability',
-  [SocketCategoryHashes.Abilities_Abilities_LightSubclass]: 'Ability',
-  [SocketCategoryHashes.Aspects]: 'Aspect',
-  [SocketCategoryHashes.Fragments]: 'Fragment',
+  [SocketCategoryHashes.Abilities_Abilities_Ikora]: 'Ability',
+  [SocketCategoryHashes.Aspects_Abilities_Ikora]: 'Aspect',
+  [SocketCategoryHashes.Aspects_Abilities_Neomuna]: 'Aspect',
+  [SocketCategoryHashes.Aspects_Abilities_Stranger]: 'Aspect',
+  [SocketCategoryHashes.Fragments_Abilities_Ikora]: 'Fragment',
+  [SocketCategoryHashes.Fragments_Abilities_Neomuna]: 'Fragment',
+  [SocketCategoryHashes.Fragments_Abilities_Stranger]: 'Fragment',
 };
 
 /** Figures out what kind of socket this is so that the "Apply" button can name the correct thing
@@ -59,14 +64,14 @@ const socketCategoryToLocKey = {
 function uiCategorizeSocket(defs: D2ManifestDefinitions, socket: DestinyItemSocketEntryDefinition) {
   const socketTypeDef = socket.socketTypeHash && defs.SocketType.get(socket.socketTypeHash);
   if (socketTypeDef) {
-    if (socketCategoryToLocKey[socketTypeDef.socketCategoryHash]) {
-      return socketCategoryToLocKey[socketTypeDef.socketCategoryHash];
+    if (socketCategoryToLocKey[socketTypeDef.socketCategoryHash as SocketCategoryHashes]) {
+      return socketCategoryToLocKey[socketTypeDef.socketCategoryHash as SocketCategoryHashes];
     } else {
       const plug = socketTypeDef.plugWhitelist.find(
-        (p) => whitelistPlugCategoryToLocKey[p.categoryHash]
+        (p) => whitelistPlugCategoryToLocKey[p.categoryHash as PlugCategoryHashes]
       );
       if (plug) {
-        return whitelistPlugCategoryToLocKey[plug.categoryHash];
+        return whitelistPlugCategoryToLocKey[plug.categoryHash as PlugCategoryHashes];
       }
     }
   }
@@ -225,10 +230,7 @@ export default function SocketDetailsSelectedPlug({
       <div className={styles.modDescription}>
         <h3>
           {plug.displayProperties.name}
-          {/* TODO: Use emptyPlugItemHash here? */}
-          {emptySpecialtySocketHashes.includes(plug.hash) && (
-            <> &mdash; {plug.itemTypeDisplayName}</>
-          )}
+          {plug.hash === socket.emptyPlugItemHash && <> &mdash; {plug.itemTypeDisplayName}</>}
         </h3>
         {plugDescriptions.perks.map((perkDesc) => (
           <React.Fragment key={perkDesc.perkHash}>

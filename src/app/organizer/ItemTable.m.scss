@@ -239,6 +239,19 @@ $content-cells: 5;
 .perkSelectable {
   cursor: pointer;
 }
+.enhancedArrow {
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 11px;
+    mask-image: url('images/enhancedArrow.svg');
+    background-color: $enhancedYellow;
+    margin-top: 3px;
+    margin-right: 1px;
+    margin-left: -7px
+  }
+}
 
 .locationCell,
 .killTrackerDisplay {
@@ -322,4 +335,13 @@ $modslotSize: 30px;
   bottom: 1px;
   left: 1px;
   width: calc(var(--item-size) - ($item-border-width * 2));
+}
+
+.loadout {
+  img {
+    height: 16px;
+    width: 16px;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
 }

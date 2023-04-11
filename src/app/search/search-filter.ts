@@ -1,20 +1,20 @@
-import { ItemHashTag } from '@destinyitemmanager/dim-api-types';
 import { D2ManifestDefinitions } from 'app/destiny2/d2-definitions';
 import { customStatsSelector, languageSelector } from 'app/dim-api/selectors';
+import { DimLanguage } from 'app/i18n';
+import { TagValue } from 'app/inventory/dim-item-info';
 import { d2ManifestSelector } from 'app/manifest/selectors';
 import { Settings } from 'app/settings/initial-settings';
 import { errorLog } from 'app/utils/log';
 import { WishListRoll } from 'app/wishlists/types';
 import _ from 'lodash';
 import { createSelector } from 'reselect';
-import { ItemInfos } from '../inventory/dim-item-info';
 import { DimItem } from '../inventory/item-types';
 import {
   allItemsSelector,
   currentStoreSelector,
   displayableBucketHashesSelector,
-  itemHashTagsSelector,
-  itemInfosSelector,
+  getNotesSelector,
+  getTagSelector,
   newItemsSelector,
   sortedStoresSelector,
 } from '../inventory/selectors';
@@ -24,12 +24,12 @@ import { querySelector } from '../shell/selectors';
 import { wishListFunctionSelector, wishListsByHashSelector } from '../wishlists/selectors';
 import { InventoryWishListRoll } from '../wishlists/wishlists';
 import {
-  canonicalFilterFormats,
   FilterContext,
   FilterDefinition,
   ItemFilter,
+  canonicalFilterFormats,
 } from './filter-types';
-import { parseQuery, QueryAST } from './query-parser';
+import { QueryAST, parseQuery } from './query-parser';
 import { SearchConfig, searchConfigSelector } from './search-config';
 import { parseAndValidateQuery, rangeStringToComparator } from './search-utils';
 
@@ -38,12 +38,11 @@ import { parseAndValidateQuery, rangeStringToComparator } from './search-utils';
 //
 
 /**
- * A selector for the search config for a particular destiny version. This must
- * depend on every bit of data in FilterContext so that we regenerate the filter
- * function whenever any of them changes.
+ * A selector for the filterContext for a particular destiny version. This must
+ * depend on every bit of data a filter might need to run, so that we regenerate the filter
+ * functions whenever any of them changes.
  */
-export const filterFactorySelector = createSelector(
-  searchConfigSelector,
+export const filterContextSelector = createSelector(
   sortedStoresSelector,
   allItemsSelector,
   currentStoreSelector,
@@ -51,11 +50,53 @@ export const filterFactorySelector = createSelector(
   wishListFunctionSelector,
   wishListsByHashSelector,
   newItemsSelector,
-  itemInfosSelector,
-  itemHashTagsSelector,
+  getTagSelector,
+  getNotesSelector,
   languageSelector,
   customStatsSelector,
   d2ManifestSelector,
+  makeFilterContext
+);
+
+function makeFilterContext(
+  stores: DimStore[],
+  allItems: DimItem[],
+  currentStore: DimStore | undefined,
+  loadoutsByItem: LoadoutsByItem,
+  wishListFunction: (item: DimItem) => InventoryWishListRoll | undefined,
+  wishListsByHash: _.Dictionary<WishListRoll[]>,
+  newItems: Set<string>,
+  getTag: (item: DimItem) => TagValue | undefined,
+  getNotes: (item: DimItem) => string | undefined,
+  language: DimLanguage,
+  customStats: Settings['customStats'],
+  d2Definitions: D2ManifestDefinitions | undefined
+): FilterContext {
+  return {
+    stores,
+    allItems,
+    currentStore: currentStore!,
+    loadoutsByItem,
+    wishListFunction,
+    newItems,
+    getTag,
+    getNotes,
+    language,
+    customStats,
+    wishListsByHash,
+    d2Definitions,
+  };
+}
+
+/**
+ * A selector for the search config for a particular destiny version.
+ * Combines the searchConfig (list of filters),
+ * and the filterContext (list of other stat information filters can use)
+ * into a filter factory (for converting parsed strings into filter functions)
+ */
+export const filterFactorySelector = createSelector(
+  searchConfigSelector,
+  filterContextSelector,
   makeSearchFilterFactory
 );
 
@@ -78,7 +119,9 @@ export const filteredItemsSelector = createSelector(
 /** A selector for a function for validating a query. */
 export const validateQuerySelector = createSelector(
   searchConfigSelector,
-  (searchConfig) => (query: string) => parseAndValidateQuery(query, searchConfig)
+  filterContextSelector,
+  (searchConfig, filterContext) => (query: string) =>
+    parseAndValidateQuery(query, searchConfig.filtersMap, filterContext)
 );
 
 /** Whether the current search query is valid. */
@@ -89,37 +132,9 @@ export const queryValidSelector = createSelector(
 );
 
 function makeSearchFilterFactory(
-  { isFilters, kvFilters }: SearchConfig,
-  stores: DimStore[],
-  allItems: DimItem[],
-  currentStore: DimStore | undefined,
-  loadoutsByItem: LoadoutsByItem,
-  wishListFunction: (item: DimItem) => InventoryWishListRoll | undefined,
-  wishListsByHash: _.Dictionary<WishListRoll[]>,
-  newItems: Set<string>,
-  itemInfos: ItemInfos,
-  itemHashTags: {
-    [itemHash: string]: ItemHashTag;
-  },
-  language: string,
-  customStats: Settings['customTotalStatsByClass'],
-  d2Definitions: D2ManifestDefinitions | undefined
+  { filtersMap: { isFilters, kvFilters } }: SearchConfig,
+  filterContext: FilterContext
 ) {
-  const filterContext: FilterContext = {
-    stores,
-    allItems,
-    currentStore: currentStore!,
-    loadoutsByItem,
-    wishListFunction,
-    newItems,
-    itemInfos,
-    itemHashTags,
-    language,
-    customStats,
-    wishListsByHash,
-    d2Definitions,
-  };
-
   return (query: string): ItemFilter => {
     query = query.trim().toLowerCase();
     if (!query.length) {
@@ -188,7 +203,8 @@ function makeSearchFilterFactory(
             return undefined;
           } else {
             const filterDef = kvFilters[filterName];
-            const matchedFilter = filterDef && matchFilter(filterDef, filterName, filterValue);
+            const matchedFilter =
+              filterDef && matchFilter(filterDef, filterName, filterValue, filterContext);
             if (matchedFilter) {
               try {
                 return matchedFilter(filterContext);
@@ -221,7 +237,8 @@ function makeSearchFilterFactory(
 export function matchFilter(
   filterDef: FilterDefinition,
   lhs: string,
-  filterValue: string
+  filterValue: string,
+  currentFilterContext?: FilterContext
 ): ((args: FilterContext) => ItemFilter) | undefined {
   for (const format of canonicalFilterFormats(filterDef.format)) {
     switch (format) {
@@ -261,7 +278,8 @@ export function matchFilter(
         const [stat, rangeString] = filterValue.split(':', 2);
         try {
           const compare = rangeStringToComparator(rangeString, filterDef.overload);
-          if (!filterDef.validateStat || filterDef.validateStat(stat)) {
+          const validator = filterDef.validateStat?.(currentFilterContext);
+          if (!validator || validator(stat)) {
             return (filterContext) =>
               filterDef.filter({
                 lhs,

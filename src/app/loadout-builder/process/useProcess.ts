@@ -1,31 +1,35 @@
+import { TagValue } from '@destinyitemmanager/dim-api-types';
 import { D2ManifestDefinitions } from 'app/destiny2/d2-definitions';
 import { DimItem, PluggableInventoryItemDefinition } from 'app/inventory/item-types';
+import { getTagSelector, unlockedPlugSetItemsSelector } from 'app/inventory/selectors';
 import { DimStore } from 'app/inventory/store-types';
-import { isPluggableItem } from 'app/inventory/store/sockets';
 import { ResolvedLoadoutItem } from 'app/loadout-drawer/loadout-types';
 import { ModMap } from 'app/loadout/mod-assignment-utils';
+import { useD2Definitions } from 'app/manifest/selectors';
 import { chainComparator, compareBy } from 'app/utils/comparators';
-import { emptyArray } from 'app/utils/empty';
 import { getModTypeTagByPlugCategoryHash } from 'app/utils/item-utils';
 import { infoLog } from 'app/utils/log';
-import { DestinyEnergyType } from 'bungie-api-ts/destiny2';
 import { proxy, releaseProxy, wrap } from 'comlink';
 import { BucketHashes } from 'data/d2/generated-enums';
 import _ from 'lodash';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { ProcessItem, ProcessItemsByBucket, ProcessStatistics } from '../process-worker/types';
 import {
   ArmorEnergyRules,
   ArmorSet,
   ItemGroup,
   ItemsByBucket,
+  LockableBucketHash,
+  ModStatChanges,
   StatFilters,
   StatRanges,
 } from '../types';
 import {
-  getTotalModStatChanges,
+  getAutoMods,
   hydrateArmorSet,
   mapArmor2ModToProcessMod,
+  mapAutoMods,
   mapDimItemToProcessItem,
 } from './mappers';
 
@@ -43,6 +47,7 @@ interface ProcessState {
      */
     mods: PluggableInventoryItemDefinition[];
     armorEnergyRules: ArmorEnergyRules;
+    modStatChanges: ModStatChanges;
     combos: number;
     processTime: number;
     statRangesFiltered?: StatRanges;
@@ -61,6 +66,7 @@ export function useProcess({
   filteredItems,
   lockedModMap,
   subclass,
+  modStatChanges,
   armorEnergyRules,
   statOrder,
   statFilters,
@@ -72,6 +78,7 @@ export function useProcess({
   filteredItems: ItemsByBucket;
   lockedModMap: ModMap;
   subclass: ResolvedLoadoutItem | undefined;
+  modStatChanges: ModStatChanges;
   armorEnergyRules: ArmorEnergyRules;
   statOrder: number[];
   statFilters: StatFilters;
@@ -84,6 +91,7 @@ export function useProcess({
     resultStoreId: selectedStore.id,
     result: null,
   });
+  const getUserItemTag = useSelector(getTagSelector);
 
   const cleanupRef = useRef<(() => void) | null>();
 
@@ -97,6 +105,8 @@ export function useProcess({
     },
     []
   );
+
+  const autoModOptions = useAutoMods(selectedStore.id);
 
   useEffect(() => {
     const processStart = performance.now();
@@ -117,13 +127,14 @@ export function useProcess({
       currentCleanup: cleanup,
     }));
 
-    const { allMods, bucketSpecificMods, activityMods, combatMods, generalMods } = lockedModMap;
+    const { allMods, bucketSpecificMods, activityMods, generalMods } = lockedModMap;
 
     const lockedProcessMods = {
       generalMods: generalMods.map(mapArmor2ModToProcessMod),
-      combatMods: combatMods.map(mapArmor2ModToProcessMod),
       activityMods: activityMods.map(mapArmor2ModToProcessMod),
     };
+
+    const autoModsData = mapAutoMods(autoModOptions);
 
     const processItems: ProcessItemsByBucket = {
       [BucketHashes.Helmet]: [],
@@ -134,17 +145,17 @@ export function useProcess({
     };
     const itemsById = new Map<string, ItemGroup>();
 
-    for (const [bucketHash, items] of Object.entries(filteredItems)) {
+    for (const [bucketHashStr, items] of Object.entries(filteredItems)) {
+      const bucketHash = parseInt(bucketHashStr, 10) as LockableBucketHash;
       processItems[bucketHash] = [];
 
       const groupedItems = mapItemsToGroups(
         items,
         statOrder,
         armorEnergyRules,
-        generalMods,
-        combatMods,
         activityMods,
-        bucketSpecificMods[bucketHash] || []
+        bucketSpecificMods[bucketHash] || [],
+        getUserItemTag
       );
 
       for (const group of groupedItems) {
@@ -153,22 +164,17 @@ export function useProcess({
       }
     }
 
-    const subclassPlugs = subclass?.loadoutItem.socketOverrides
-      ? Object.values(subclass.loadoutItem.socketOverrides)
-          .map((hash) => defs.InventoryItem.get(hash))
-          .filter(isPluggableItem)
-      : emptyArray<PluggableInventoryItemDefinition>();
-
     // TODO: could potentially partition the problem (split the largest item category maybe) to spread across more cores
     const workerStart = performance.now();
     worker
       .process(
         processItems,
-        getTotalModStatChanges(allMods, subclassPlugs, selectedStore.classType),
+        _.mapValues(modStatChanges, (stat) => stat.value),
         lockedProcessMods,
         statOrder,
         statFilters,
         anyExotic,
+        autoModsData,
         autoStatMods,
         proxy(setRemainingTime)
       )
@@ -186,6 +192,7 @@ export function useProcess({
             sets: hydratedSets,
             mods: allMods,
             armorEnergyRules,
+            modStatChanges,
             combos,
             processTime: performance.now() - processStart,
             statRangesFiltered,
@@ -208,17 +215,22 @@ export function useProcess({
     statFilters,
     statOrder,
     anyExotic,
-    subclass?.loadoutItem.socketOverrides,
+    subclass,
     armorEnergyRules,
     autoStatMods,
     lockedModMap,
+    autoModOptions,
+    getUserItemTag,
+    modStatChanges,
   ]);
 
   return { result, processing, remainingTime };
 }
 
 function createWorker() {
-  const instance = new Worker(new URL('../process-worker/ProcessWorker', import.meta.url));
+  const instance = new Worker(
+    /* webpackChunkName: "lo-worker" */ new URL('../process-worker/ProcessWorker', import.meta.url)
+  );
 
   const worker = wrap<import('../process-worker/ProcessWorker').ProcessWorker>(instance);
 
@@ -236,12 +248,17 @@ interface MappedItem {
 }
 
 // comparator for sorting items in groups generated by groupItems. These items will all have the same stats.
-const groupComparator = chainComparator(
-  // Prefer higher-energy (ideally masterworked)
-  compareBy(({ dimItem }: MappedItem) => -(dimItem.energy?.energyCapacity || 0)),
-  // Prefer items that are equipped
-  compareBy(({ dimItem }: MappedItem) => (dimItem.equipped ? 0 : 1))
-);
+const groupComparator = (getTag: (item: DimItem) => TagValue | undefined) =>
+  chainComparator(
+    // Prefer higher-energy (ideally masterworked)
+    compareBy(({ dimItem }: MappedItem) => -(dimItem.energy?.energyCapacity || 0)),
+    // Prefer favorited items
+    compareBy(({ dimItem }: MappedItem) => getTag(dimItem) !== 'favorite'),
+    // Prefer items with higher power
+    compareBy(({ dimItem }: MappedItem) => -dimItem.power),
+    // Prefer items that are equipped
+    compareBy(({ dimItem }: MappedItem) => (dimItem.equipped ? 0 : 1))
+  );
 
 /**
  * To reduce the number of items sent to the web worker we group items by a number of varying
@@ -273,29 +290,16 @@ function mapItemsToGroups(
   items: readonly DimItem[],
   statOrder: number[],
   armorEnergyRules: ArmorEnergyRules,
-  generalMods: PluggableInventoryItemDefinition[],
-  combatMods: PluggableInventoryItemDefinition[],
   activityMods: PluggableInventoryItemDefinition[],
-  modsForSlot: PluggableInventoryItemDefinition[]
+  modsForSlot: PluggableInventoryItemDefinition[],
+  getUserItemTag: (item: DimItem) => TagValue | undefined
 ): ItemGroup[] {
-  // Figure out all the energy types that have been requested across all mods.
-  // Purposefully not including bucket-specific mods here, because in either case it doesn't matter:
-  //   1. modsForSlot has no elemental mods. They have no effect on the loop.
-  //   2. modsForSlot has elemental mods. All items will be forced to that element type anyway,
-  //      so elemental affinity doesn't create separate groups.
-  const requiredEnergyTypes = new Set<DestinyEnergyType>();
-  for (const mod of [...combatMods, ...generalMods, ...activityMods]) {
-    if (mod.plug.energyCost && mod.plug.energyCost.energyType !== DestinyEnergyType.Any) {
-      requiredEnergyTypes.add(mod.plug.energyCost.energyType);
-    }
-  }
-
   // Figure out all the interesting mod slots required by mods are.
   // This includes combat mod tags because blue-quality items don't have them
   // and there may be legacy items that can slot CWL/Warmind Cell mods but not
   // Elemental Well mods?
   const requiredModTags = new Set<string>();
-  for (const mod of [...combatMods, ...activityMods]) {
+  for (const mod of activityMods) {
     const modTag = getModTypeTagByPlugCategoryHash(mod.plug.plugCategoryHash);
     if (modTag) {
       requiredModTags.add(modTag);
@@ -308,33 +312,19 @@ function mapItemsToGroups(
     processItem: mapDimItemToProcessItem({ dimItem, armorEnergyRules, modsForSlot }),
   }));
 
-  // First, group by exoticness and energy type.
-  const firstPassGroupingFn = ({ hash, isExotic, energy }: ProcessItem) => {
-    // Ensure exotics always form a distinct group
-    let groupId = isExotic ? `${hash}-` : 'legendary-';
-
-    if (requiredEnergyTypes.size) {
-      groupId +=
-        energy &&
-        // We group all items locked to an energy type we don't care about
-        // by using an `X` instead of the numerical energy type -- if we only
-        // want to assign Solar mods, we can put all items locked to Void,
-        // Stasis and Arc into their own group (apart from the Any items and
-        // apart from the items locked to Solar)
-        (energy.type !== DestinyEnergyType.Any
-          ? requiredEnergyTypes.has(energy.type)
-            ? energy.type
-            : 'X'
-          : DestinyEnergyType.Any);
-    }
-
-    return groupId;
-  };
+  // First, group by exoticness to ensure exotics always form a distinct group
+  const firstPassGroupingFn = ({ hash, isExotic }: ProcessItem) =>
+    isExotic ? `${hash}-` : 'legendary-';
 
   // Second pass -- cache the worker-relevant information, except the one we used in the first pass.
   const cache = new Map<
     DimItem,
-    { stats: number[]; energyCapacity: number; relevantModSeasons: Set<string> }
+    {
+      stats: number[];
+      energyCapacity: number;
+      relevantModSeasons: Set<string>;
+      isArtifice: boolean;
+    }
   >();
   for (const item of mappedItems) {
     // Id, name are not important, exoticness+hash and energy type were grouped by in phase 1.
@@ -353,6 +343,7 @@ function mapItemsToGroups(
       stats: statValues,
       energyCapacity,
       relevantModSeasons: new Set(relevantModSeasons),
+      isArtifice: item.processItem.isArtifice,
     });
   }
 
@@ -385,6 +376,7 @@ function mapItemsToGroups(
       const betterOrEqual =
         testInfo.stats.every((statValue, idx) => statValue >= existingInfo.stats[idx]) &&
         testInfo.energyCapacity >= existingInfo.energyCapacity &&
+        (testItem.processItem.isArtifice || !existingInfo.isArtifice) &&
         isSuperset(testInfo.relevantModSeasons, existingInfo.relevantModSeasons);
       if (!betterOrEqual) {
         return false;
@@ -394,6 +386,7 @@ function mapItemsToGroups(
       const isDifferent =
         testInfo.stats.some((statValue, idx) => statValue !== existingInfo.stats[idx]) ||
         testInfo.energyCapacity !== existingInfo.energyCapacity ||
+        testInfo.isArtifice !== existingInfo.isArtifice ||
         testInfo.relevantModSeasons.size !== existingInfo.relevantModSeasons.size;
       return isDifferent;
     };
@@ -417,7 +410,7 @@ function mapItemsToGroups(
     const groupedByEverything = _.groupBy(keepSet, ({ dimItem }) => finalGroupingFn(dimItem));
     const newGroups = Object.values(groupedByEverything);
     for (const group of newGroups) {
-      group.sort(groupComparator);
+      group.sort(groupComparator(getUserItemTag));
       groups.push({
         canonicalProcessItem: group[0].processItem,
         items: group.map(({ dimItem }) => dimItem),
@@ -426,4 +419,10 @@ function mapItemsToGroups(
   }
 
   return groups;
+}
+
+export function useAutoMods(storeId: string) {
+  const defs = useD2Definitions()!;
+  const unlockedPlugs = useSelector(unlockedPlugSetItemsSelector(storeId));
+  return useMemo(() => getAutoMods(defs, unlockedPlugs), [defs, unlockedPlugs]);
 }

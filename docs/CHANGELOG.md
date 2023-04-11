@@ -1,5 +1,127 @@
 ## Next
 
+* Loadout Optimizer and Loadouts now include Armor Charge-based "Font of ..." mods in stat calculations. For example, if you are using the Font of Focus armor mod, Loadout Optimizer will assume the +30 points to Discipline when holding Armor Charge are active and not waste stat points on exceeding T10 Discipline.
+
+
+## 7.64.0 <span class="changelog-date">(2023-04-09)</span>
+
+* Updated DIM's Smart Moves logic for how to choose which items to move when a bucket is full.
+* The bulk note tool has gotten a major upgrade and now allows adding and removing to existing notes.
+* Undo and redo in loadout editor and loadout optimizer have the keyboard shortcuts you'd expect.
+* Added some extra information to the randomize popup to explain how to use it with searches.
+* Fixed the "L" hotkey inadvertantly working in Compare and when items should not be lockable.
+* Added new hotkeys for opening Armory (A) and Infusion Fuel Finder (I) from the item popup.
+
+
+## 7.63.3 <span class="changelog-date">(2023-04-06)</span>
+
+* Fixed equipping in game loadouts
+* DIM now tries to keep your device from sleeping while an item is moving or a loadout is applying.
+
+## 7.63.2 <span class="changelog-date">(2023-04-03)</span>
+
+## 7.63.1 <span class="changelog-date">(2023-04-03)</span>
+
+## 7.63.0 <span class="changelog-date">(2023-04-02)</span>
+
+* The "Show Mod Placement" sheet will now show the required armor energy capacity upgrades to make all mods fit (and the total upgrade costs).
+* Loadout Optimizer sets will now show energy capacity bars below armor pieces, similar to the "Show Mod Placement" sheet.
+* Loadouts created before Lightfall with deprecated stat mods now have their stat mods restored.
+* Mods in the loadout mods picker are now more logically ordered by matching the in-game order.
+* Autocompletion in the search bar now succeeds for terms with umlauts even if you didn't enter any (suggests "jötunn" when typing "jot...").
+* Fixed the `modslot:any`/`modslot:none` filters.
+* Fixed an issue where some subclass fragments and armor mods would be missing descriptions in Loadout Optimizer and the Loadout editor.
+* The minor boosts to all stats that enhanced crafted and masterworked adept weapons have are now ignored in Organizer's "Masterwork Stat" column and by the `masterwork:statname` filter. Only the primary +10 boost is considered.
+* Sharing build settings directly from Loadout Optimizer will now also include subclass configuration.
+* DIM now saves Artifact configuration in Loadouts. Note that DIM cannot reconfigure your artifact automatically, but you can use this information to keep track of which artifact unlocks are important for a Loadout.
+* Search autocomplete should be smarter, with the ability to complete item and perk names even when you type multiple words.
+* In-game loadouts' icon, color, and name can now be changed through DIM.
+* You can create an in-game loadout from your currently equipped items through DIM.
+* Added quick clear buttons to each section of the loadout editor.
+
+## 7.62.0 <span class="changelog-date">(2023-03-26)</span>
+
+* Items in the "Focused Decoding" and "Legacy Gear" screens within the Vendors page will now correctly show collection and inventory checkmarks.
+* The current power caps and power floor are now displayed on the Milestones section of the Progress screen.
+* Display the current and max Postmaster count at all times.
+* Armor mods descriptions now include their stacking behavior.
+* Added tooltips for the loadout optimizer settings shown on saved loadouts.
+* The "mod assignment" screen displays better on mobile.
+* The icons for weapon slots have been changed to reflect how they work in game. What was the "kinetic" slot now shows kinetic, stasis, and strand icons while the "energy" slot shows solar, arc, and void icons.
+* On mobile, you can no longer accidentally scroll the whole page while viewing search results.
+* Clicking "Manage Loadouts" from the character menu will bring you to the Loadouts screen for that character instead of your active character.
+
+## 7.61.0 <span class="changelog-date">(2023-03-19)</span>
+
+* Hashtags for items and loadouts can now contain emoji.
+* Removed # from loadout filter pills.
+* Overloaded range filters (e.g. season:>outlaw) now autocomplete.
+* Stat effects for mods/aspects in the mod picker are now both more accurate and more attractive.
+* Fixed the color of Strand movement and class abilities on Loadouts screen.
+* Fixed an issue where DIM Sync data might not be available when Bungie.net is down.
+* Added `source:rootofnightmares`/`source:ron` and `modslot:rootofnightmares` searches.
+* DIM now correctly allows you to unsave previously saved queries that later became invalid.
+* Fixed the `is:curated` filter never matching weapons without an equipped kill tracker.
+
+## 7.60.1 <span class="changelog-date">(2023-03-14)</span>
+
+* Custom stat fixes
+  * Fixed the `stat`/`basestat` filters for weapon stats.
+  * Fixed custom stat columns unchecking themselves in Organizer.
+* Loadout Optimizer improvements:
+  * The tooltip for stat mods now explains when a mod was picked automatically.
+  * Mins/Maxes displayed in the stat tier picker now better match the stat rangees found in results.
+
+## 7.60.0 <span class="changelog-date">(2023-03-12)</span>
+
+* Fixed deepsight border showing up for weapons whose pattern has already been unlocked.
+* DIM now correctly handles reduced mod costs via artifact unlocks.
+* Support added for named and multiple custom total stats. Sort and judge your your armor pieces by multiple situations, like a PVE and PVP stat. Sort by these values in Compare and Organizer, and search by them with stat filters like `stat:pve:>40`.
+* Fixed powerful and pinnacle reward calculations.
+
+## 7.59.0 <span class="changelog-date">(2023-03-05)</span>
+
+## 7.58.1 <span class="changelog-date">(2023-03-02)</span>
+
+* DIM supports displaying and equipping in-game loadouts.
+* Triage tab is now available outside of DIM Beta. This feature provides information to help quickly compare and judge a new (or old) item.
+  * Whether am armor piece is high or low among your others, or is completely better or worse than another.
+  * How many other similar weapons you have, and weapon Wishlist status.
+  * Whether an item is included in loadouts, and which.
+* Bright Dust and XP have been added to the filter pills on bounties and seasonal challenges.
+* `is:statlower` knows about the new artifice armor rules and will consider the artifice +3 stat boost in a single stat when comparing against other armor.
+* Sorting in the Organizer is a bit more reliable.
+* DIM should be more resistant to being logged out during API maintenance.
+* Loadout Optimizer will now automatically use Artifice mod slots to improve build stats, and the arrows point the right way.
+* The tooltip for enhanced intrinsics or adept masterworks will now only show the stat boosts actually relevant to the item.
+* The materials popup has been updated for Lightfall.
+* Deepsight weapons once again appear with a red border. The deepsight search terms have been collapsed into just `is:deepsight` as there is no longer deepsight progress on items.
+* Removed useless energy indicators on armor.
+
+### Beta Only
+
+* Loadout Optimizer's toggle to include required stat mods has been changed to optimize all builds using as many stat mods as possible. This is a consequence of the artifice changes.
+
+
+## 7.58.0 <span class="changelog-date">(2023-02-26)</span>
+
+* The `inloadout` filter now finds hashtags in Loadout notes.
+* Support for non-English hashtags.
+* Added a popup on crafted weapons that shows all their kill tracker stats at once.
+* Switched D2Gunsmith link to D2Foundry.
+
+## 7.57.0 <span class="changelog-date">(2023-02-19)</span>
+
+* Add `is:retiredperk` search that highlights items that have a perk which can no longer drop for that item.
+* You can now click a Loadout name in Organizer's Loadouts column to quickly bring up this loadout for editing.
+* When hovering over subclass Aspects in Loadouts and Loadout Optimizer, the tooltip will now show the number of Fragment slots granted.
+* You can now bring up the Armory page for a weapon directly from the search bar by typing a weapon name there and clicking the corresponding entry.
+* Improved the logic for choosing what item to equip when de-equipping an item. DIM will now generally avoid equipping exotics as replacements, and will pay attention to the type of item and your tags.
+
+## 7.56.0 <span class="changelog-date">(2023-02-12)</span>
+
+* Fixed the Compare tool for items with quotation marks in their name.
+
 ## 7.55.0 <span class="changelog-date">(2023-02-05)</span>
 
 ## 7.54.0 <span class="changelog-date">(2023-01-29)</span>
@@ -593,5 +715,3 @@
 ## v6 CHANGELOG
 
 * v6 CHANGELOG available [here](https://github.com/DestinyItemManager/DIM/blob/master/docs/OLD_CHANGELOG/OLD_CHANGELOG_6.X.X.md)
-
-

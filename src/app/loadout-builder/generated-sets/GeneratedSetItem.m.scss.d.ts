@@ -3,7 +3,7 @@
 interface CssExports {
   'arrow': string;
   'energyHidden': string;
-  'energyIcon': string;
+  'energyMeter': string;
   'energySwapContainer': string;
   'energyValue': string;
   'item': string;

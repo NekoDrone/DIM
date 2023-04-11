@@ -10,8 +10,8 @@ import ClickOutside from '../ClickOutside';
 import { PressTipRoot } from '../PressTip';
 import { usePopper } from '../usePopper';
 import ColorDestinySymbols from './ColorDestinySymbols';
-import { symbolsSelector } from './destiny-symbols';
 import styles from './SymbolsPicker.m.scss';
+import { symbolsSelector } from './destiny-symbols';
 
 const symbolsIcon = String.fromCodePoint(FontGlyphs.gilded_title);
 
@@ -48,14 +48,8 @@ const SymbolsWindow = React.memo(function ({
   onChooseGlyph: (unicode: string) => void;
 }) {
   const allSymbols = useSelector(symbolsSelector);
-  const emojis = Object.values(allSymbols).map(({ glyph, name, fullName }) => ({
-    id: name,
-    name: fullName,
-    keyword: name,
-    glyph,
-  }));
   const [query, setQuery] = useState('');
-  const [preview, setPreview] = useState<typeof emojis[number] | undefined>(undefined);
+  const [preview, setPreview] = useState<(typeof allSymbols)[number] | undefined>(undefined);
   return (
     <>
       {/* explicitly eat all click events so that clicking in the window doesn't dismiss the item popup */}
@@ -69,8 +63,8 @@ const SymbolsWindow = React.memo(function ({
         </div>
         <div className={styles.symbolsBody}>
           <div className={styles.symbolsContainer}>
-            {emojis
-              .filter((e) => e.keyword.includes(query) || e.name.includes(query))
+            {allSymbols
+              .filter((e) => e.fullName.includes(query) || e.name.includes(query))
               .map((emoji) => (
                 <button
                   className={styles.emojiButton}
@@ -80,7 +74,7 @@ const SymbolsWindow = React.memo(function ({
                     e.stopPropagation();
                     onChooseGlyph(emoji.glyph);
                   }}
-                  onMouseOver={() => setPreview(emoji)}
+                  onPointerEnter={() => setPreview(emoji)}
                 >
                   {emoji.glyph}
                 </button>
@@ -91,8 +85,8 @@ const SymbolsWindow = React.memo(function ({
           <ColorDestinySymbols text={preview?.glyph ?? symbolsIcon} />
           {preview && (
             <div>
-              <span>{preview.name}</span>
-              <span>:{preview.keyword}:</span>
+              <span>{preview.fullName}</span>
+              <span>:{preview.name}:</span>
             </div>
           )}
         </div>

@@ -7,20 +7,22 @@ import {
   LoadoutModState,
   LoadoutSocketOverrideState,
 } from 'app/loadout-drawer/loadout-apply-state';
-import { Loadout } from 'app/loadout-drawer/loadout-types';
+import { InGameLoadout, Loadout } from 'app/loadout-drawer/loadout-types';
+import InGameLoadoutIcon from 'app/loadout/ingame/InGameLoadoutIcon';
 import { useD2Definitions } from 'app/manifest/selectors';
 import { NotificationError, NotifyInput } from 'app/notifications/notifications';
 import { AppIcon, faCheckCircle, faExclamationCircle, refreshIcon } from 'app/shell/icons';
 import { DimError } from 'app/utils/dim-error';
 import { useThrottledSubscription } from 'app/utils/hooks';
 import { Observable } from 'app/utils/observable';
+import { LookupTable } from 'app/utils/util-types';
 import clsx from 'clsx';
 import _ from 'lodash';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import ConnectedInventoryItem from './ConnectedInventoryItem';
-import { DimItem } from './item-types';
 import ItemIcon, { DefItemIcon } from './ItemIcon';
 import styles from './MoveNotifications.m.scss';
+import { DimItem } from './item-types';
 import { DimStore } from './store-types';
 
 /** How long to leave the notification up after it's done. */
@@ -250,7 +252,7 @@ const enum MoveState {
   Succeeded,
 }
 
-const moveStateClasses = {
+const moveStateClasses: LookupTable<MoveState, string> = {
   [MoveState.Failed]: styles.failed,
   [MoveState.Succeeded]: styles.succeeded,
 };
@@ -279,4 +281,22 @@ function MoveItemNotificationIcon({ completion }: { completion: Promise<unknown>
       <AppIcon icon={progressIcon} spinning={inProgress === MoveState.InProgress} />
     </div>
   );
+}
+
+/**
+ * Generate JSX for applying an ingame loadout. This isn't a component.
+ */
+// TODO: build something more like DIM's loadout notification?
+export function inGameLoadoutNotification(
+  loadout: InGameLoadout,
+  applyPromise: Promise<any>
+): NotifyInput {
+  return {
+    promise: applyPromise,
+    duration: lingerMs,
+    title: loadout.name,
+    icon: <InGameLoadoutIcon loadout={loadout} />,
+    trailer: <MoveItemNotificationIcon completion={applyPromise} />,
+    body: t('InGameLoadout.Applying'),
+  };
 }

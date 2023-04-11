@@ -1,16 +1,17 @@
 import { D2ManifestDefinitions } from 'app/destiny2/d2-definitions';
 import BungieImage from 'app/dim-ui/BungieImage';
-import { t } from 'app/i18next-t';
+import BucketIcon from 'app/dim-ui/svgs/BucketIcon';
+import { t, tl } from 'app/i18next-t';
 import { DimItem } from 'app/inventory/item-types';
 import { moveItemTo } from 'app/inventory/move-item';
 import { DimStore } from 'app/inventory/store-types';
 import { showItemPicker } from 'app/item-picker/item-picker';
 import { useD2Definitions } from 'app/manifest/selectors';
-import { itemCategoryIcons } from 'app/organizer/item-category-icons';
-import { addIcon, AppIcon } from 'app/shell/icons';
+import { AppIcon, addIcon } from 'app/shell/icons';
 import { ThunkDispatchProp } from 'app/store/types';
 import { chainComparator, compareBy, reverseComparator } from 'app/utils/comparators';
 import { itemCanBeEquippedBy } from 'app/utils/item-utils';
+import { LookupTable, isIn } from 'app/utils/util-types';
 import clsx from 'clsx';
 import grenade from 'destiny-icons/weapons/grenade.svg';
 import headshot from 'destiny-icons/weapons/headshot.svg';
@@ -18,8 +19,9 @@ import melee from 'destiny-icons/weapons/melee.svg';
 import React from 'react';
 import { useDispatch } from 'react-redux';
 import styles from './BountyGuide.m.scss';
+import { xpItems } from './xp';
 
-enum KillType {
+const enum KillType {
   Melee,
   Super,
   Grenade,
@@ -27,16 +29,35 @@ enum KillType {
   Precision,
   ClassAbilities,
 }
-const killTypeIcons: { [key in KillType]: string | undefined } = {
+const killTypeIcons: LookupTable<KillType, string> = {
   [KillType.Melee]: melee,
-  [KillType.Super]: undefined,
   [KillType.Grenade]: grenade,
-  [KillType.Finisher]: undefined,
   [KillType.Precision]: headshot,
-  [KillType.ClassAbilities]: undefined,
-} as const;
+};
 
-export type DefType = 'ActivityMode' | 'Destination' | 'DamageType' | 'ItemCategory' | 'KillType';
+const killTypeDescriptions: Record<KillType, string> = {
+  [KillType.Melee]: tl('KillType.Melee'),
+  [KillType.Super]: tl('KillType.Super'),
+  [KillType.Grenade]: tl('KillType.Grenade'),
+  [KillType.Finisher]: tl('KillType.Finisher'),
+  [KillType.Precision]: tl('KillType.Precision'),
+  [KillType.ClassAbilities]: tl('KillType.ClassAbilities'),
+};
+
+export type DefType =
+  | 'ActivityMode'
+  | 'Destination'
+  | 'DamageType'
+  | 'ItemCategory'
+  | 'KillType'
+  | 'Reward';
+
+// Reward types we'll show in the bounty guide. Could be expanded (e.g. to seasonal mats)
+const rewardAllowList = [
+  ...Object.keys(xpItems).map((i) => parseInt(i, 10)),
+  2817410917, // bright dust
+  3168101969, // bright dust
+];
 
 export interface BountyFilter {
   type: DefType;
@@ -87,6 +108,7 @@ export default function BountyGuide({
     DamageType: {},
     ItemCategory: {},
     KillType: {},
+    Reward: {},
   };
   for (const i of bounties) {
     const expired = i.pursuit?.expirationDate
@@ -96,9 +118,19 @@ export default function BountyGuide({
       const info = pursuitsInfo[i.hash];
       if (info) {
         for (const key in info) {
-          for (const value of info[key]) {
-            mapped[key][value] ||= [];
-            mapped[key][value].push(i);
+          const infoKey = key as keyof typeof info;
+          const values = info[infoKey];
+          if (values) {
+            for (const value of values) {
+              (mapped[infoKey][value] ??= []).push(i);
+            }
+          }
+        }
+        if (i.pursuit) {
+          for (const reward of i.pursuit.rewards) {
+            if (rewardAllowList.includes(reward.itemHash)) {
+              (mapped.Reward[reward.itemHash] ??= []).push(i);
+            }
           }
         }
       }
@@ -144,7 +176,8 @@ export default function BountyGuide({
   return (
     <div className={styles.guide} onClick={clearSelection}>
       {flattened.map(({ type, value, bounties }) => (
-        <div
+        <button
+          type="button"
           key={type + value}
           className={clsx(styles.pill, {
             [styles.selected]: matchPill(type, value, selectedFilters),
@@ -167,7 +200,7 @@ export default function BountyGuide({
               <AppIcon icon={addIcon} />
             </span>
           )}
-        </div>
+        </button>
       ))}
     </div>
   );
@@ -205,19 +238,26 @@ function PillContent({
     case 'ItemCategory':
       return (
         <>
-          {value in itemCategoryIcons && (
-            <img className={styles.itemCategoryIcon} height="16" src={itemCategoryIcons[value]} />
-          )}
+          <BucketIcon itemCategoryHash={value} height="16" />
           {defs.ItemCategory.get(value)?.displayProperties.name}
         </>
       );
     case 'KillType':
       return (
         <>
-          {value in killTypeIcons && (
-            <img className={styles.itemCategoryIcon} height="16" src={killTypeIcons[value]} />
+          {isIn(value, killTypeIcons) && (
+            <img className={styles.invert} height="16" src={killTypeIcons[value]} />
           )}
-          {KillType[value]}
+          {t(killTypeDescriptions[value as KillType])}
+        </>
+      );
+    case 'Reward':
+      return (
+        <>
+          {defs.InventoryItem.get(value).displayProperties.hasIcon && (
+            <BungieImage height="16" src={defs.InventoryItem.get(value).displayProperties.icon} />
+          )}
+          {defs.InventoryItem.get(value).displayProperties.name}
         </>
       );
   }
@@ -239,12 +279,15 @@ export function matchBountyFilters(
     return true;
   }
   const info = pursuitsInfo[item.hash];
-  if (info) {
-    for (const filter of filters) {
-      if (info[filter.type]?.includes(filter.hash)) {
+  for (const filter of filters) {
+    if (filter.type === 'Reward') {
+      if (item.pursuit?.rewards.some((r) => r.itemHash === filter.hash)) {
         return true;
       }
+    } else if (info?.[filter.type]?.includes(filter.hash)) {
+      return true;
     }
   }
+
   return false;
 }

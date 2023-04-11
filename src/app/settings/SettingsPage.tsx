@@ -2,16 +2,13 @@ import { LoadoutSort } from '@destinyitemmanager/dim-api-types';
 import { currentAccountSelector, hasD1AccountSelector } from 'app/accounts/selectors';
 import { clarityDiscordLink, clarityLink } from 'app/clarity/about';
 import { settingsSelector } from 'app/dim-api/selectors';
-import ClassIcon from 'app/dim-ui/ClassIcon';
-import { StatTotalToggle } from 'app/dim-ui/CustomStatTotal';
 import PageWithMenu from 'app/dim-ui/PageWithMenu';
 import { t } from 'app/i18next-t';
+import NewItemIndicator from 'app/inventory/NewItemIndicator';
+import TagIcon from 'app/inventory/TagIcon';
 import { clearAllNewItems } from 'app/inventory/actions';
 import { itemTagList } from 'app/inventory/dim-item-info';
-import NewItemIndicator from 'app/inventory/NewItemIndicator';
-import { sortedStoresSelector } from 'app/inventory/selectors';
 import { useLoadStores } from 'app/inventory/store/hooks';
-import TagIcon from 'app/inventory/TagIcon';
 import WishListSettings from 'app/settings/WishListSettings';
 import { useIsPhonePortrait } from 'app/shell/selectors';
 import DimApiSettings from 'app/storage/DimApiSettings';
@@ -19,7 +16,6 @@ import { useThunkDispatch } from 'app/store/thunk-dispatch';
 import StreamDeckSettings from 'app/stream-deck/StreamDeckSettings/StreamDeckSettings';
 import { clearAppBadge } from 'app/utils/app-badge';
 import { errorLog } from 'app/utils/log';
-import { uniqBy } from 'app/utils/util';
 import i18next from 'i18next';
 import exampleWeaponImage from 'images/example-weapon.jpg';
 import _ from 'lodash';
@@ -28,19 +24,20 @@ import { useSelector } from 'react-redux';
 import ErrorBoundary from '../dim-ui/ErrorBoundary';
 import InventoryItem from '../inventory/InventoryItem';
 import { DimItem } from '../inventory/item-types';
-import { AppIcon, lockIcon, refreshIcon, unlockedIcon } from '../shell/icons';
-import { setCharacterOrder } from './actions';
+import { AppIcon, faGrid, faList, lockIcon, refreshIcon, unlockedIcon } from '../shell/icons';
 import CharacterOrderEditor from './CharacterOrderEditor';
 import Checkbox from './Checkbox';
-import { useSetSetting } from './hooks';
-import { Settings } from './initial-settings';
-import { itemSortSettingsSelector } from './item-sort';
+import { CustomStatsSettings } from './CustomStatsSettings';
 import Select, { mapToOptions } from './Select';
-import './settings.scss';
 import styles from './SettingsPage.m.scss';
 import SortOrderEditor, { SortProperty } from './SortOrderEditor';
 import Spreadsheets from './Spreadsheets';
 import { TroubleshootingSettings } from './Troubleshooting';
+import { setCharacterOrder } from './actions';
+import { useSetSetting } from './hooks';
+import { Settings } from './initial-settings';
+import { itemSortSettingsSelector } from './item-sort';
+import './settings.scss';
 
 const fakeWeapon = {
   icon: `~${exampleWeaponImage}`,
@@ -86,7 +83,6 @@ let languageChanged = false;
 export default function SettingsPage() {
   const dispatch = useThunkDispatch();
   const settings = useSelector(settingsSelector);
-  const stores = useSelector(sortedStoresSelector);
   const currentAccount = useSelector(currentAccountSelector);
   const hasD1Account = useSelector(hasD1AccountSelector);
   const isPhonePortrait = useIsPhonePortrait();
@@ -188,7 +184,6 @@ export default function SettingsPage() {
     sunset: t('Settings.SortBySunset'),
     acquisitionRecency: t('Settings.SortByRecent'),
     elementWeapon: t('Settings.SortByWeaponElement'),
-    elementArmor: t('Settings.SortByArmorElement'),
     masterworked: t('Settings.Masterworked'),
     crafted: t('Settings.SortByCrafted'),
     deepsight: t('Settings.SortByDeepsight'),
@@ -243,13 +238,6 @@ export default function SettingsPage() {
       ? { id: 'stream-deck', title: 'Elgato Stream Deck' }
       : undefined,
   ]);
-
-  const uniqChars =
-    stores &&
-    uniqBy(
-      stores.filter((s) => !s.isVault),
-      (s) => s.classType
-    );
 
   return (
     <PageWithMenu>
@@ -339,23 +327,9 @@ export default function SettingsPage() {
               <SortOrderEditor order={itemSortCustom} onSortOrderChanged={itemSortOrderChanged} />
               <div className="fineprint">{t('Settings.DontForgetDupes')}</div>
             </div>
-            <div className="setting">
-              <label htmlFor="">{t('Organizer.Columns.CustomTotal')}</label>
-              <div className="fineprint">{t('Settings.CustomStatDesc')}</div>
-              <div className="customStats">
-                {uniqChars.map(
-                  (store) =>
-                    !store.isVault && (
-                      <React.Fragment key={store.classType}>
-                        <div>
-                          <ClassIcon classType={store.classType} /> {store.className}:{' '}
-                        </div>
-                        <StatTotalToggle forClass={store.classType} />
-                      </React.Fragment>
-                    )
-                )}
-              </div>
-            </div>
+
+            <CustomStatsSettings />
+
             <div className="setting">
               <label>{t('Settings.PerkDisplay')}</label>
               <div className="radioOptions">
@@ -367,7 +341,7 @@ export default function SettingsPage() {
                     value="true"
                     onChange={onChangePerkList}
                   />
-                  <span>{t('Settings.PerkList')}</span>
+                  <AppIcon icon={faList} /> {t('Settings.PerkList')}
                 </label>
                 <label>
                   <input
@@ -377,7 +351,7 @@ export default function SettingsPage() {
                     value="false"
                     onChange={onChangePerkList}
                   />
-                  <span>{t('Settings.PerkGrid')}</span>
+                  <AppIcon icon={faGrid} /> {t('Settings.PerkGrid')}
                 </label>
               </div>
             </div>

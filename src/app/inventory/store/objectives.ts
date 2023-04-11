@@ -1,9 +1,11 @@
 import { D1ObjectiveDefinition } from 'app/destiny1/d1-manifest-types';
 import { D2ManifestDefinitions } from 'app/destiny2/d2-definitions';
+import { HashLookup } from 'app/utils/util-types';
 import {
   DestinyInventoryItemDefinition,
   DestinyObjectiveDefinition,
   DestinyObjectiveProgress,
+  DestinyObjectiveUiStyle,
   DestinyUnlockValueUIStyle,
 } from 'bungie-api-ts/destiny2';
 import trialsHashes from 'data/d2/d2-trials-objectives.json';
@@ -61,13 +63,20 @@ export function isBooleanObjective(
   progress: number | undefined,
   completionValue: number
 ) {
+  const isD2Def = 'allowOvercompletion' in objectiveDef;
+  // shaping dates weirdly claim they shouldn't be shown
+  const isShapingDate =
+    isD2Def && objectiveDef.uiStyle === DestinyObjectiveUiStyle.CraftingWeaponTimestamp;
+  // objectives that increment just once
+  const singleTick =
+    !isD2Def || !objectiveDef.allowOvercompletion || !objectiveDef.showValueOnComplete;
+
   return (
+    // if its value style is a checkbox, obviously it's boolean
     getValueStyle(objectiveDef, progress ?? 0, completionValue) ===
       DestinyUnlockValueUIStyle.Checkbox ||
-    (completionValue === 1 &&
-      (!('allowOvercompletion' in objectiveDef) ||
-        !objectiveDef.allowOvercompletion ||
-        !objectiveDef.showValueOnComplete))
+    // or if it's completed after 1 tick and isn't a shaping date
+    (completionValue === 1 && singleTick && !isShapingDate)
   );
 }
 
@@ -82,14 +91,16 @@ export function isFlawlessPassage(objectives: DestinyObjectiveProgress[] | undef
   return objectives?.some((obj) => isFlawlessObjective(obj.objectiveHash) && obj.complete);
 }
 
+const trialsObjectives: HashLookup<string> = trialsHashes.objectives;
+
 export function isFlawlessObjective(objectiveHash: number) {
-  return trialsHashes.objectives[objectiveHash] === 'Flawless';
+  return trialsObjectives[objectiveHash] === 'Flawless';
 }
 
 export function isWinsObjective(objectiveHash: number) {
-  return trialsHashes.objectives[objectiveHash] === 'Wins';
+  return trialsObjectives[objectiveHash] === 'Wins';
 }
 
 export function isRoundsWonObjective(objectiveHash: number) {
-  return trialsHashes.objectives[objectiveHash] === 'Rounds Won';
+  return trialsObjectives[objectiveHash] === 'Rounds Won';
 }

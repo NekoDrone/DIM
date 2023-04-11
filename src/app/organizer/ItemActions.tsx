@@ -36,7 +36,7 @@ function ItemActions({
   stores: DimStore[];
   itemsAreSelected: boolean;
   onLock: (locked: boolean) => void;
-  onNote: (note?: string) => void;
+  onNote: () => void;
   onTagSelectedItems: (tagInfo: TagCommandInfo) => void;
   onMoveSelectedItems: (store: DimStore) => void;
 }) {
@@ -59,13 +59,6 @@ function ItemActions({
     ),
     onSelected: () => onMoveSelectedItems(store),
   }));
-
-  const noted = () => {
-    const note = prompt(t('Organizer.NotePrompt'));
-    if (note !== null) {
-      onNote(note || undefined);
-    }
-  };
 
   return (
     <div className={styles.itemActions}>
@@ -102,7 +95,7 @@ function ItemActions({
         className={`dim-button ${styles.actionButton}`}
         disabled={!itemsAreSelected}
         name="note"
-        onClick={noted}
+        onClick={onNote}
       >
         <AppIcon icon={stickyNoteIcon} />
         <span className={styles.label}>{t('Organizer.Note')}</span>

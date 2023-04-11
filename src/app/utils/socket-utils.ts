@@ -4,7 +4,6 @@ import {
   DimSocketCategory,
   PluggableInventoryItemDefinition,
 } from 'app/inventory/item-types';
-import { getSubclassPlugCategories } from 'app/inventory/subclass';
 import {
   DestinyItemPlugDefinition,
   DestinySocketCategoryStyle,
@@ -13,7 +12,7 @@ import {
 import { PlugCategoryHashes, SocketCategoryHashes } from 'data/d2/generated-enums';
 import _ from 'lodash';
 import { DimSocket, DimSockets } from '../inventory/item-types';
-import { isArmor2Mod } from './item-utils';
+import { isArmor2Mod, isKillTrackerSocket } from './item-utils';
 
 type WithRequiredProperty<T, K extends keyof T> = T & {
   [P in K]-?: NonNullable<T[P]>;
@@ -102,10 +101,7 @@ export function getSocketsByCategoryHashes(
 }
 
 /** Special case of getSocketsByCategoryHash that returns the first (presumably only) socket that matches the category hash */
-export function getFirstSocketByCategoryHash(
-  sockets: DimSockets,
-  categoryHash: SocketCategoryHashes
-) {
+export function getFirstSocketByCategoryHash(sockets: DimSockets, categoryHash: number) {
   const category = sockets?.categories.find((c) => c.category.hash === categoryHash);
   if (!category) {
     return undefined;
@@ -222,20 +218,85 @@ export function countEnhancedPerks(sockets: DimSockets) {
   return sockets.allSockets.filter((s) => s.plugged && isEnhancedPerk(s.plugged.plugDef)).length;
 }
 
+export const aspectSocketCategoryHashes: SocketCategoryHashes[] = [
+  SocketCategoryHashes.Aspects_Abilities_Ikora,
+  SocketCategoryHashes.Aspects_Abilities_Neomuna,
+  SocketCategoryHashes.Aspects_Abilities_Stranger,
+];
+
+export const fragmentSocketCategoryHashes: SocketCategoryHashes[] = [
+  SocketCategoryHashes.Fragments_Abilities_Ikora,
+  SocketCategoryHashes.Fragments_Abilities_Stranger,
+  SocketCategoryHashes.Fragments_Abilities_Neomuna,
+];
+
+export const subclassAbilitySocketCategoryHashes: SocketCategoryHashes[] = [
+  SocketCategoryHashes.Abilities_Abilities,
+  SocketCategoryHashes.Abilities_Abilities_Ikora,
+  SocketCategoryHashes.Super,
+];
+
 export function isModCostVisible(
-  defs: D2ManifestDefinitions,
   plug: DestinyItemPlugDefinition
 ): plug is WithRequiredProperty<DestinyItemPlugDefinition, 'energyCost'> {
   // hide cost if it's less than 1
   if ((plug.energyCost?.energyCost ?? 0) < 1) {
     return false;
   }
-
-  // hide cost for Subclass 3.0 fragments as these are currently always set to 1
-  const subclassPlugCategory = getSubclassPlugCategories(defs).get(plug.plugCategoryHash);
-  if (subclassPlugCategory?.socketCategoryHash === SocketCategoryHashes.Fragments) {
+  if (
+    plug.plugCategoryIdentifier.endsWith('.fragments') ||
+    plug.plugCategoryIdentifier.endsWith('.trinkets')
+  ) {
     return false;
   }
 
   return true;
+}
+
+/**
+ * Determine the perk selections that correspond to the "curated" roll for this socket.
+ */
+function getCuratedRollForSocket(defs: D2ManifestDefinitions, socket: DimSocket) {
+  // We only build a larger list of plug options if this is a perk socket, since users would
+  // only want to see (and search) the plug options for perks. For other socket types (mods, shaders, etc.)
+  // we will only populate plugOptions with the currently inserted plug.
+  const socketDef = socket.socketDefinition;
+  let curatedRoll: number[] | null = null;
+  if (socket.isPerk) {
+    if (socketDef.reusablePlugSetHash) {
+      // Get options from plug set, instead of live info
+      const plugSet = defs.PlugSet.get(socketDef.reusablePlugSetHash);
+      if (plugSet) {
+        curatedRoll = plugSet.reusablePlugItems.map((p) => p.plugItemHash);
+      }
+    } else if (socketDef.reusablePlugItems) {
+      curatedRoll = socketDef.reusablePlugItems.map((p) => p.plugItemHash);
+    }
+  }
+  return curatedRoll;
+}
+
+/** Determine if the item has a curated roll, and if all of its perks match that curated roll. */
+export function matchesCuratedRoll(defs: D2ManifestDefinitions, item: DimItem) {
+  const legendaryWeapon = item.bucket?.sort === 'Weapons' && item.tier === 'Legendary';
+
+  if (!legendaryWeapon) {
+    return false;
+  }
+
+  const matchesCollectionsRoll = item.sockets?.allSockets
+    // curatedRoll is only set for perk-style sockets
+    .filter((socket) => socket.isPerk && socket.plugOptions.length && !isKillTrackerSocket(socket))
+    .map((socket) => ({
+      socket,
+      curatedRoll: getCuratedRollForSocket(defs, socket),
+    }))
+    .filter(({ curatedRoll }) => curatedRoll)
+    .every(
+      ({ socket, curatedRoll }) =>
+        curatedRoll!.length === socket.plugOptions.length &&
+        socket.plugOptions.every((option, idx) => option.plugDef.hash === curatedRoll![idx])
+    );
+
+  return matchesCollectionsRoll;
 }

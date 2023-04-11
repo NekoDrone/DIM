@@ -1,6 +1,8 @@
 import { currentProfileSelector } from 'app/dim-api/selectors';
+import { DimItem } from 'app/inventory/item-types';
 import { getHashtagsFromNote } from 'app/inventory/note-hashtags';
 import { allItemsSelector, storesSelector } from 'app/inventory/selectors';
+import { allInGameLoadoutsSelector } from 'app/loadout/ingame/selectors';
 import { manifestSelector } from 'app/manifest/selectors';
 import { RootState } from 'app/store/types';
 import { emptyArray } from 'app/utils/empty';
@@ -8,7 +10,7 @@ import { DestinyClass } from 'bungie-api-ts/destiny2';
 import _ from 'lodash';
 import { createSelector } from 'reselect';
 import { convertDimApiLoadoutToLoadout } from './loadout-type-converters';
-import { Loadout, LoadoutItem } from './loadout-types';
+import { InGameLoadout, Loadout, LoadoutItem, isInGameLoadout } from './loadout-types';
 import {
   getInstancedLoadoutItem,
   getResolutionInfo,
@@ -34,7 +36,7 @@ export const loadoutsHashtagsSelector = createSelector(loadoutsSelector, (loadou
 ]);
 
 export interface LoadoutsByItem {
-  [itemId: string]: { loadout: Loadout; loadoutItem: LoadoutItem }[] | undefined;
+  [itemId: string]: { loadout: Loadout | InGameLoadout; loadoutItem: LoadoutItem }[] | undefined;
 }
 
 /**
@@ -46,17 +48,23 @@ export interface LoadoutsByItem {
 export const loadoutsByItemSelector = createSelector(
   manifestSelector,
   loadoutsSelector,
+  allInGameLoadoutsSelector,
   storesSelector,
   allItemsSelector,
-  (definitions, loadouts, stores, allItems) => {
+  (definitions, loadouts, inGameLoadouts, stores, allItems) => {
     const loadoutsForItems: LoadoutsByItem = {};
     if (!definitions) {
       return loadoutsForItems;
     }
 
-    const recordLoadout = (itemId: string, loadout: Loadout, loadoutItem: LoadoutItem) => {
-      if (!loadoutsForItems[itemId]?.some((l) => l.loadout.id === loadout.id)) {
-        (loadoutsForItems[itemId] ??= []).push({ loadout, loadoutItem });
+    const recordLoadout = (
+      itemId: string,
+      loadout: Loadout | InGameLoadout,
+      loadoutItem: LoadoutItem
+    ) => {
+      const loadoutsForItem = (loadoutsForItems[itemId] ??= []);
+      if (!loadoutsForItem.some((l) => l.loadout.id === loadout.id)) {
+        loadoutsForItem.push({ loadout, loadoutItem });
       }
     };
 
@@ -90,8 +98,36 @@ export const loadoutsByItemSelector = createSelector(
       }
     }
 
+    for (const loadout of inGameLoadouts) {
+      for (const loadoutItem of loadout.items) {
+        const result = allItems.find((item) => item.id === loadoutItem.itemInstanceId);
+        if (result) {
+          recordLoadout(result.id, loadout, {
+            id: result.id,
+            hash: result.hash,
+            amount: 1,
+            equip: true,
+          });
+        }
+      }
+    }
+
     return loadoutsForItems;
   }
+);
+
+/**
+ * Returns a function that determines if an item is in an
+ * in-game loadout that belongs to a specific character
+ */
+export const isInInGameLoadoutForSelector = createSelector(
+  loadoutsByItemSelector,
+  (loadoutsByItem) => (item: DimItem, ownerId: string) =>
+    Boolean(
+      loadoutsByItem[item.id]?.some(
+        (l) => isInGameLoadout(l.loadout) && l.loadout.characterId === ownerId
+      )
+    )
 );
 
 export const previousLoadoutSelector =

@@ -39,6 +39,7 @@ export default function Developer(this: never) {
       localStorage.removeItem('authorization');
       window.location.href = window.location.origin;
     } else {
+      // eslint-disable-next-line no-alert
       alert('You need to fill in the whole form');
     }
   };
@@ -60,6 +61,7 @@ export default function Developer(this: never) {
       const app = await registerApp(dimAppName, apiKey);
       setDimApiKey(app.dimApiKey);
     } catch (e) {
+      // eslint-disable-next-line no-alert
       alert(e.message);
     }
   };
@@ -101,6 +103,9 @@ export default function Developer(this: never) {
               into the "Origin Header" section under "Browser Based Apps".
             </li>
             <li>Select "Confidential" OAuth type.</li>
+            <li>
+              Select all scopes <i>except</i> for Administrate Groups/Clans
+            </li>
             <li>
               After saving, copy the "API Key" here:
               <br />

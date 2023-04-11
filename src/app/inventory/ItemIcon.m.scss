@@ -108,10 +108,7 @@ $commonBg: #366f42;
 
 .energyCostOverlay {
   position: absolute;
-  top: $item-border-width;
-  bottom: $item-border-width;
-  right: $item-border-width;
-  left: $item-border-width;
+  inset: $item-border-width $item-border-width $item-border-width $item-border-width;
   background-repeat: no-repeat;
   background-position: center;
   background-size: cover;
@@ -120,10 +117,7 @@ $commonBg: #366f42;
 
 .energyCost {
   position: absolute;
-  top: $item-border-width;
-  bottom: $item-border-width;
-  right: $item-border-width;
-  left: $item-border-width;
+  inset: $item-border-width $item-border-width $item-border-width $item-border-width;
   pointer-events: none;
 
   > text {
@@ -142,22 +136,10 @@ $commonBg: #366f42;
   pointer-events: none;
 }
 
-.deepsightPattern {
-  $size: 12;
-  position: absolute;
-  display: block;
-  width: 0;
-  height: 0;
-  border: calc(var(--item-size) * #{math.div($size, 100)}) solid $deepsight-border-color;
-  border-top-color: transparent;
-  border-left-color: transparent;
-  right: 0;
-  top: calc(var(--item-size) - (var(--item-size) * #{math.div($size, 50)}) - 1px);
-  // Seems to fix https://github.com/DestinyItemManager/DIM/issues/7974
-  pointer-events: none;
+.inverted {
+  border-color: #222;
 }
 
-.bucketIcon {
-  filter: invert(1);
-  border-color: #222;
+.strandColorFix {
+  filter: hue-rotate(211deg) brightness(1.5);
 }

@@ -3,7 +3,8 @@ import ExternalLink from 'app/dim-ui/ExternalLink';
 import { t } from 'app/i18next-t';
 import { exportBackupData, exportLocalData } from 'app/storage/export-data';
 import { useThunkDispatch } from 'app/store/thunk-dispatch';
-import React, { useEffect, useMemo, useState } from 'react';
+import { isAppStoreVersion } from 'app/utils/browsers';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { oauthClientId } from '../bungie-api/bungie-api-utils';
@@ -14,7 +15,7 @@ const loginHelpLink = 'https://github.com/DestinyItemManager/DIM/wiki/Accounts-a
 
 export default function Login() {
   const dispatch = useThunkDispatch();
-  const authorizationState = useMemo(() => uuidv4(), []);
+  const authorizationState = useMemo(() => (isAppStoreVersion() ? 'dimauth-' : '') + uuidv4(), []);
   const clientId = oauthClientId();
   const { state } = useLocation();
   const previousPath = state?.path;
@@ -50,19 +51,6 @@ export default function Login() {
     return enabled;
   });
 
-  // Don't let people leave the page without a backup if they're enabling DIM Sync after having it disabled
-  const [hasBackedUp, setHasBackedUp] = useState(false);
-  const onLoginClick = (e: React.MouseEvent) => {
-    if (
-      apiPermissionPreviouslyDisabled &&
-      apiPermissionGranted &&
-      !hasBackedUp &&
-      !confirm(t('Views.Login.BackupPrompt'))
-    ) {
-      e.preventDefault();
-    }
-  };
-
   const onApiPermissionChange = (checked: boolean) => {
     localStorage.setItem('dim-api-enabled', JSON.stringify(checked));
     setApiPermissionGranted(checked);
@@ -72,7 +60,6 @@ export default function Login() {
     // Export from local data
     const data = await dispatch(exportLocalData());
     exportBackupData(data);
-    setHasBackedUp(true);
   };
 
   return (
@@ -80,22 +67,12 @@ export default function Login() {
       <h1>{t('Views.Login.Permission')}</h1>
       <p className={styles.explanation}>{t('Views.Login.Explanation')}</p>
       <p>
-        <a
-          rel="noopener noreferrer"
-          onClick={onLoginClick}
-          className={styles.auth}
-          href={authorizationURL()}
-        >
+        <a rel="noopener noreferrer" className={styles.auth} href={authorizationURL()}>
           {t('Views.Login.Auth')}
         </a>
       </p>
       <div>
-        <a
-          className="dim-button"
-          rel="noopener noreferrer"
-          onClick={onLoginClick}
-          href={authorizationURL('true')}
-        >
+        <a className="dim-button" rel="noopener noreferrer" href={authorizationURL('true')}>
           {t('Views.Login.NewAccount')}
         </a>
       </div>
@@ -121,10 +98,7 @@ export default function Login() {
           </div>
         )}
         {!apiPermissionPreviouslyDisabled && !apiPermissionGranted && (
-          <div className={styles.warning}>
-            If DIM Sync is disabled, you may lose your data, for example when you clear your browser
-            cache. Please make frequent backups or enable DIM Sync.
-          </div>
+          <div className={styles.warning}>{t('Views.Login.DisabledDimSyncWarning')}</div>
         )}
       </section>
       <section className={styles.section}>

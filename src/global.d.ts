@@ -22,10 +22,6 @@ interface Window {
   skipWaiting(): void;
 }
 
-interface WindowEventMap {
-  beforeinstallprompt: BeforeInstallPromptEvent;
-}
-
 interface Navigator {
   /** iOS-only: True if the app is running in installed mode */
   standalone?: boolean;
@@ -34,34 +30,22 @@ interface Navigator {
   clearAppBadge();
 }
 
-/**
- * The BeforeInstallPromptEvent is fired at the Window.onbeforeinstallprompt handler
- * before a user is prompted to "install" a web site to a home screen on mobile.
- *
- * Only supported on Chrome and Android Webview.
- */
-interface BeforeInstallPromptEvent extends Event {
-  /**
-   * Returns an array of DOMString items containing the platforms on which the event was dispatched.
-   * This is provided for user agents that want to present a choice of versions to the user such as,
-   * for example, "web" or "play" which would allow the user to chose between a web version or
-   * an Android version.
-   */
-  readonly platforms: string[];
+interface Performance {
+  measureUserAgentSpecificMemory(): Promise<MeasureMemoryResult>;
+}
 
-  /**
-   * Returns a Promise that resolves to a DOMString containing either "accepted" or "dismissed".
-   */
-  readonly userChoice: Promise<{
-    outcome: 'accepted' | 'dismissed';
-    platform: string;
-  }>;
-
-  /**
-   * Allows a developer to show the install prompt at a time of their own choosing.
-   * This method returns a Promise.
-   */
-  prompt(): Promise<void>;
+interface MeasureMemoryResult {
+  bytes: number;
+  breakdown: {
+    bytes: number;
+    attribution: [
+      {
+        url: string;
+        scope: string;
+      }
+    ];
+    types: string[];
+  }[];
 }
 
 declare module '*/CHANGELOG.md' {

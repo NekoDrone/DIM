@@ -1,5 +1,5 @@
 import AnimatedNumber from 'app/dim-ui/AnimatedNumber';
-import ElementIcon from 'app/dim-ui/ElementIcon';
+import { EnergyCostIcon } from 'app/dim-ui/ElementIcon';
 import { t } from 'app/i18next-t';
 import RecoilStat, { recoilValue } from 'app/item-popup/RecoilStat';
 import { getColor, percent } from 'app/shell/formatters';
@@ -17,7 +17,7 @@ export default function CompareStat({
   stat: StatInfo;
   compareBaseStats?: boolean;
   item: DimItem;
-  setHighlight?: (value?: string | number) => void;
+  setHighlight: (value?: string | number) => void;
 }) {
   const itemStat = stat.getStat(item);
 
@@ -28,20 +28,14 @@ export default function CompareStat({
     : 0;
 
   return (
-    <div
-      onMouseOver={setHighlight ? () => setHighlight(stat.id) : undefined}
-      className={styles.stat}
-      style={color}
-    >
+    <div onPointerEnter={() => setHighlight(stat.id)} className={styles.stat} style={color}>
       {statValue !== 0 && stat.bar && item.bucket.sort === 'Armor' && (
         <span className={styles.bar}>
           <span style={{ width: percent(statValue / stat.statMaximumValue) }} />
         </span>
       )}
       <span className={styles.value}>
-        {stat.id === 'EnergyCapacity' && itemStat && item.energy && (
-          <ElementIcon element={item.element} />
-        )}
+        {stat.id === 'EnergyCapacity' && itemStat && item.energy && <EnergyCostIcon />}
         {itemStat?.value !== undefined ? (
           itemStat.statHash === StatHashes.RecoilDirection ? (
             <span className={styles.recoil}>

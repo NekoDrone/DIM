@@ -1,15 +1,17 @@
 import { destinyVersionSelector } from 'app/accounts/selectors';
 import { StatInfo } from 'app/compare/Compare';
 import { settingSelector } from 'app/dim-api/selectors';
+import useBulkNote from 'app/dim-ui/useBulkNote';
+import useConfirm from 'app/dim-ui/useConfirm';
 import UserGuideLink from 'app/dim-ui/UserGuideLink';
 import { t, tl } from 'app/i18next-t';
-import { setNote } from 'app/inventory/actions';
 import { bulkLockItems, bulkTagItems } from 'app/inventory/bulk-actions';
 import { DimItem } from 'app/inventory/item-types';
 import {
   allItemsSelector,
   createItemContextSelector,
-  itemInfosSelector,
+  getNotesSelector,
+  getTagSelector,
   newItemsSelector,
   storesSelector,
 } from 'app/inventory/selectors';
@@ -23,6 +25,7 @@ import { applyLoadout } from 'app/loadout-drawer/loadout-apply';
 import { convertToLoadoutItem, newLoadout } from 'app/loadout-drawer/loadout-utils';
 import { loadoutsByItemSelector } from 'app/loadout-drawer/selectors';
 import { useD2Definitions } from 'app/manifest/selectors';
+import { showNotification } from 'app/notifications/notifications';
 import { searchFilterSelector } from 'app/search/search-filter';
 import { setSettingAction } from 'app/settings/actions';
 import { toggleSearchQueryComponent } from 'app/shell/actions';
@@ -32,6 +35,7 @@ import { useThunkDispatch } from 'app/store/thunk-dispatch';
 import { chainComparator, compareBy, reverseComparator } from 'app/utils/comparators';
 import { emptyArray, emptyObject } from 'app/utils/empty';
 import { useSetCSSVarToHeight, useShiftHeld } from 'app/utils/hooks';
+import { LookupTable, StringLookup } from 'app/utils/util-types';
 import { hasWishListSelector, wishListFunctionSelector } from 'app/wishlists/selectors';
 import { DestinyClass } from 'bungie-api-ts/destiny2';
 import clsx from 'clsx';
@@ -47,13 +51,15 @@ import { itemIncludesCategories } from './filtering-utils';
 import ItemActions, { TagCommandInfo } from './ItemActions';
 // eslint-disable-next-line css-modules/no-unused-class
 import styles from './ItemTable.m.scss';
-import { ItemCategoryTreeNode } from './ItemTypeSelector';
+import { armorTopLevelCatHashes, ItemCategoryTreeNode } from './ItemTypeSelector';
 import { ColumnDefinition, ColumnSort, Row, SortDirection } from './table-types';
 
-const categoryToClass = {
-  23: DestinyClass.Hunter,
-  22: DestinyClass.Titan,
-  21: DestinyClass.Warlock,
+const possibleStyles = styles as unknown as StringLookup<string>;
+
+const categoryToClass: LookupTable<ItemCategoryHashes, DestinyClass> = {
+  [ItemCategoryHashes.Hunter]: DestinyClass.Hunter,
+  [ItemCategoryHashes.Titan]: DestinyClass.Titan,
+  [ItemCategoryHashes.Warlock]: DestinyClass.Warlock,
 };
 
 const downloadButtonSettings = [
@@ -84,7 +90,11 @@ export default function ItemTable({ categories }: { categories: ItemCategoryTree
     if (!terminal) {
       return emptyArray<DimItem>();
     }
-    const categoryHashes = categories.map((s) => s.itemCategoryHash).filter((h) => h !== 0);
+    const categoryHashes = categories.map((s) => s.itemCategoryHash).filter(Boolean);
+    // a top level class-specific category implies armor
+    if (armorTopLevelCatHashes.some((h) => categoryHashes.includes(h))) {
+      categoryHashes.push(ItemCategoryHashes.Armor);
+    }
     const items = allItems.filter(
       (i) => i.comparable && itemIncludesCategories(i, categoryHashes) && searchFilter(i)
     );
@@ -98,7 +108,8 @@ export default function ItemTable({ categories }: { categories: ItemCategoryTree
   const itemType = isWeapon ? 'weapon' : isArmor ? 'armor' : 'ghost';
 
   const stores = useSelector(storesSelector);
-  const itemInfos = useSelector(itemInfosSelector);
+  const getTag = useSelector(getTagSelector);
+  const getNotes = useSelector(getNotesSelector);
   const wishList = useSelector(wishListFunctionSelector);
   const hasWishList = useSelector(hasWishListSelector);
   const enabledColumns = useSelector(settingSelector(columnSetting(itemType)));
@@ -108,11 +119,14 @@ export default function ItemTable({ categories }: { categories: ItemCategoryTree
   const destinyVersion = useSelector(destinyVersionSelector);
   const dispatch = useThunkDispatch();
 
-  const { customTotalStatsByClass } = itemCreationContext;
+  const { customStats } = itemCreationContext;
 
-  const classCategoryHash =
-    categories.map((n) => n.itemCategoryHash).find((hash) => hash in categoryToClass) ?? 999;
-  const classIfAny: DestinyClass = categoryToClass[classCategoryHash] ?? DestinyClass.Unknown;
+  const classCategoryHash = categories
+    .map((n) => n.itemCategoryHash)
+    .find((hash) => hash in categoryToClass);
+  const classIfAny: DestinyClass = classCategoryHash
+    ? categoryToClass[classCategoryHash] ?? DestinyClass.Unknown
+    : DestinyClass.Unknown;
 
   // Calculate the true height of the table header, for sticky-ness
   const tableRef = useRef<HTMLDivElement>(null);
@@ -156,18 +170,16 @@ export default function ItemTable({ categories }: { categories: ItemCategoryTree
     [terminal, items]
   );
 
-  const customStatTotal = customTotalStatsByClass[classIfAny] ?? emptyArray();
-
   const columns: ColumnDefinition[] = useMemo(
     () =>
       getColumns(
         itemType,
         statHashes,
-        classIfAny,
-        itemInfos,
+        getTag,
+        getNotes,
         wishList,
         hasWishList,
-        customStatTotal,
+        customStats,
         loadoutsByItem,
         newItems,
         destinyVersion,
@@ -178,9 +190,9 @@ export default function ItemTable({ categories }: { categories: ItemCategoryTree
       hasWishList,
       statHashes,
       itemType,
-      itemInfos,
-      customStatTotal,
-      classIfAny,
+      getTag,
+      getNotes,
+      customStats,
       loadoutsByItem,
       newItems,
       destinyVersion,
@@ -193,10 +205,14 @@ export default function ItemTable({ categories }: { categories: ItemCategoryTree
     () =>
       _.compact(
         enabledColumns.flatMap((id) =>
-          columns.filter((column) => id === getColumnSelectionId(column))
+          columns.filter(
+            (column) =>
+              id === getColumnSelectionId(column) &&
+              (column.limitToClass === undefined || column.limitToClass === classIfAny)
+          )
         )
       ),
-    [columns, enabledColumns]
+    [columns, enabledColumns, classIfAny]
   );
 
   // process items into Rows
@@ -242,16 +258,8 @@ export default function ItemTable({ categories }: { categories: ItemCategoryTree
     dispatch(bulkLockItems(selectedItems, lock));
   });
 
-  const onNote = (note?: string) => {
-    if (!note) {
-      note = undefined;
-    }
-    if (selectedItems.length) {
-      for (const item of selectedItems) {
-        dispatch(setNote(item, note));
-      }
-    }
-  };
+  const [bulkNoteDialog, bulkNote] = useBulkNote();
+  const onNote = () => bulkNote(selectedItems);
 
   /**
    * Handles Click Events for Table Rows
@@ -418,20 +426,21 @@ export default function ItemTable({ categories }: { categories: ItemCategoryTree
     );
   }
 
+  const [confirmDialog, confirm] = useConfirm();
   const importCsv: DropzoneOptions['onDrop'] = async (acceptedFiles) => {
     if (acceptedFiles.length < 1) {
-      alert(t('Csv.ImportWrongFileType'));
+      showNotification({ type: 'error', title: t('Csv.ImportWrongFileType') });
       return;
     }
 
-    if (!confirm(t('Csv.ImportConfirm'))) {
+    if (!(await confirm(t('Csv.ImportConfirm')))) {
       return;
     }
     try {
       const result = await dispatch(importTagsNotesFromCsv(acceptedFiles));
-      alert(t('Csv.ImportSuccess', { count: result }));
+      showNotification({ type: 'success', title: t('Csv.ImportSuccess', { count: result }) });
     } catch (e) {
-      alert(t('Csv.ImportFailed', { error: e.message }));
+      showNotification({ type: 'error', title: t('Csv.ImportFailed', { error: e.message }) });
     }
   };
 
@@ -445,6 +454,8 @@ export default function ItemTable({ categories }: { categories: ItemCategoryTree
       role="table"
       ref={tableRef}
     >
+      {confirmDialog}
+      {bulkNoteDialog}
       <div className={styles.toolbar} ref={toolbarRef}>
         <div>
           <ItemActions
@@ -491,30 +502,38 @@ export default function ItemTable({ categories }: { categories: ItemCategoryTree
           />
         </div>
       </div>
-      {filteredColumns.map((column: ColumnDefinition) => (
-        <div
-          key={column.id}
-          className={clsx(styles[column.id], styles.header, {
-            [styles.stats]: ['stats', 'baseStats'].includes(column.columnGroup?.id ?? ''),
-          })}
-          role="columnheader"
-          aria-sort="none"
-        >
-          <div onClick={column.noSort ? undefined : toggleColumnSort(column)}>
-            {column.header}
-            {!column.noSort && columnSorts.some((c) => c.columnId === column.id) && (
-              <AppIcon
-                className={styles.sorter}
-                icon={
-                  columnSorts.find((c) => c.columnId === column.id)!.sort === SortDirection.DESC
-                    ? faCaretUp
-                    : faCaretDown
-                }
-              />
+      {filteredColumns.map((column: ColumnDefinition) => {
+        const isStatsColumn = ['stats', 'baseStats'].includes(column.columnGroup?.id ?? '');
+        return (
+          <div
+            key={column.id}
+            className={clsx(
+              possibleStyles[column.id],
+              column.id.startsWith('customstat_') && styles.customstat,
+              styles.header,
+              {
+                [styles.stats]: isStatsColumn,
+              }
             )}
+            role="columnheader"
+            aria-sort="none"
+          >
+            <div onClick={column.noSort ? undefined : toggleColumnSort(column)}>
+              {column.header}
+              {!column.noSort && columnSorts.some((c) => c.columnId === column.id) && (
+                <AppIcon
+                  className={styles.sorter}
+                  icon={
+                    columnSorts.find((c) => c.columnId === column.id)!.sort === SortDirection.DESC
+                      ? faCaretDown
+                      : faCaretUp
+                  }
+                />
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {rows.length === 0 && <div className={styles.noItems}>{t('Organizer.NoItems')}</div>}
       {rows.map((row) => (
         <React.Fragment key={row.item.id}>
@@ -562,7 +581,11 @@ function sortRows(
         const compare = column.sort
           ? (row1: Row, row2: Row) => column.sort!(row1.values[column.id], row2.values[column.id])
           : compareBy((row: Row) => row.values[column.id] ?? 0);
-        return sorter.sort === SortDirection.ASC ? compare : reverseComparator(compare);
+        // Always sort undefined values to the end
+        return chainComparator(
+          compareBy((row: Row) => row.values[column.id] === undefined),
+          sorter.sort === SortDirection.ASC ? compare : reverseComparator(compare)
+        );
       }
       return compareBy(() => 0);
     })
@@ -628,8 +651,9 @@ function TableRow({
         <div
           key={column.id}
           onClick={onRowClick(row, column)}
-          className={clsx(styles[column.id], {
+          className={clsx(possibleStyles[column.id], {
             [styles.hasFilter]: column.filter,
+            [styles.customstat]: column.id.startsWith('customstat_'),
           })}
           role="cell"
         >

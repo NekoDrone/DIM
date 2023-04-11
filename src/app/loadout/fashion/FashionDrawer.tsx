@@ -5,8 +5,8 @@ import { PressTip } from 'app/dim-ui/PressTip';
 import Sheet from 'app/dim-ui/Sheet';
 import { t } from 'app/i18next-t';
 import ConnectedInventoryItem from 'app/inventory/ConnectedInventoryItem';
-import { DimItem, DimSocket, PluggableInventoryItemDefinition } from 'app/inventory/item-types';
 import { DefItemIcon } from 'app/inventory/ItemIcon';
+import { DimItem, DimSocket, PluggableInventoryItemDefinition } from 'app/inventory/item-types';
 import { allItemsSelector, unlockedPlugSetItemsSelector } from 'app/inventory/selectors';
 import SocketDetails from 'app/item-popup/SocketDetails';
 import { LockableBucketHashes } from 'app/loadout-builder/types';
@@ -15,9 +15,9 @@ import { useD2Definitions } from 'app/manifest/selectors';
 import { DEFAULT_ORNAMENTS, DEFAULT_SHADER } from 'app/search/d2-known-values';
 import { AppIcon, clearIcon, rightArrowIcon } from 'app/shell/icons';
 import { useIsPhonePortrait } from 'app/shell/selectors';
-import { RootState } from 'app/store/types';
 import { getSocketsByCategoryHash, plugFitsIntoSocket } from 'app/utils/socket-utils';
 import { Portal } from 'app/utils/temp-container';
+import { HashLookup } from 'app/utils/util-types';
 import {
   DestinyCollectibleDefinition,
   DestinyInventoryItemDefinition,
@@ -52,9 +52,7 @@ export default function FashionDrawer({
   onClose: () => void;
 }) {
   const defs = useD2Definitions()!;
-  const unlockedPlugs = useSelector((state: RootState) =>
-    unlockedPlugSetItemsSelector(state, storeId)
-  );
+  const unlockedPlugs = useSelector(unlockedPlugSetItemsSelector(storeId));
   const isPhonePortrait = useIsPhonePortrait();
   const [pickPlug, setPickPlug] = useState<PickPlugState>();
   const allItems = useSelector(allItemsSelector);
@@ -64,7 +62,7 @@ export default function FashionDrawer({
 
   const classType = loadout.classType;
 
-  const armorItemsByBucketHash: { [bucketHash: number]: ResolvedLoadoutItem | undefined } = _.keyBy(
+  const armorItemsByBucketHash: HashLookup<ResolvedLoadoutItem> = _.keyBy(
     armor,
     (li) => li.item.bucket.hash
   );
@@ -501,9 +499,7 @@ function FashionSocket({
   onPickPlug: (params: PickPlugState) => void;
   onRemovePlug: (bucketHash: number, modHash: number) => void;
 }) {
-  const unlockedPlugSetItems = useSelector((state: RootState) =>
-    unlockedPlugSetItemsSelector(state, storeId)
-  );
+  const unlockedPlugSetItems = useSelector(unlockedPlugSetItemsSelector(storeId));
   const handleOrnamentClick = socket && (() => onPickPlug({ item: exampleItem, socket }));
 
   const unlockedPlugsWithoutTheDefault = Array.from(unlockedPlugSetItems).filter(
@@ -528,7 +524,11 @@ function FashionSocket({
       showCloseIconOnHover
     >
       {plug && canSlotOrnament ? (
-        <PlugDef onClick={handleOrnamentClick} plug={plug as PluggableInventoryItemDefinition} />
+        <PlugDef
+          onClick={handleOrnamentClick}
+          plug={plug as PluggableInventoryItemDefinition}
+          forClassType={undefined}
+        />
       ) : (
         <PressTip
           tooltip={

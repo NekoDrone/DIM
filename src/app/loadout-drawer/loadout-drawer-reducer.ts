@@ -4,18 +4,21 @@ import { D1ManifestDefinitions } from 'app/destiny1/d1-definitions';
 import { D2Categories } from 'app/destiny2/d2-bucket-categories';
 import { D2ManifestDefinitions } from 'app/destiny2/d2-definitions';
 import { t } from 'app/i18next-t';
+import { D1BucketCategory, D2BucketCategory } from 'app/inventory/inventory-buckets';
 import { DimItem } from 'app/inventory/item-types';
+import { getArtifactUnlocks } from 'app/inventory/selectors';
 import { DimStore } from 'app/inventory/store-types';
 import { SocketOverrides } from 'app/inventory/store/override-sockets';
+import { mapToNonReducedModCostVariant } from 'app/loadout/mod-utils';
 import { showNotification } from 'app/notifications/notifications';
 import { itemCanBeInLoadout } from 'app/utils/item-utils';
 import { errorLog } from 'app/utils/log';
 import { getSocketsByCategoryHash } from 'app/utils/socket-utils';
-import { DestinyClass, TierType } from 'bungie-api-ts/destiny2';
+import { DestinyClass, DestinyProfileResponse, TierType } from 'bungie-api-ts/destiny2';
 import { BucketHashes, SocketCategoryHashes } from 'data/d2/generated-enums';
 import produce from 'immer';
 import _ from 'lodash';
-import { Loadout, LoadoutItem, ResolvedLoadoutItem } from './loadout-types';
+import { Loadout, LoadoutItem, ResolvedLoadoutItem, ResolvedLoadoutMod } from './loadout-types';
 import {
   convertToLoadoutItem,
   createSocketOverridesFromEquipped,
@@ -37,7 +40,7 @@ import {
  * loadout must be a new instance (immutable updates). These functions can be
  * used in reducers or passed directly to a `setLoadout` function.
  *
- * Example:
+ * @example
  *
  * function addItem(defs, item): LoadoutUpdateFunction {
  *   return (loadout) => {
@@ -317,10 +320,10 @@ export function clearSubclass(
 /**
  * Remove a specific mod by its inventory item hash.
  */
-export function removeMod(hash: number): LoadoutUpdateFunction {
+export function removeMod(mod: ResolvedLoadoutMod): LoadoutUpdateFunction {
   return produce((loadout) => {
     if (loadout.autoStatMods) {
-      const index = loadout.autoStatMods.indexOf(hash);
+      const index = loadout.autoStatMods.indexOf(mod.originalModHash);
       if (index !== -1) {
         loadout.autoStatMods.splice(index, 1);
         return;
@@ -328,7 +331,7 @@ export function removeMod(hash: number): LoadoutUpdateFunction {
     }
 
     if (loadout.parameters?.mods) {
-      const index = loadout.parameters.mods.indexOf(hash);
+      const index = loadout.parameters?.mods.indexOf(mod.originalModHash);
       if (index !== -1) {
         loadout.parameters.mods.splice(index, 1);
         return;
@@ -378,8 +381,9 @@ export function setLoadoutSubclassFromEquipped(
 export function fillLoadoutFromEquipped(
   defs: D1ManifestDefinitions | D2ManifestDefinitions,
   store: DimStore,
+  artifactUnlocks?: LoadoutParameters['artifactUnlocks'],
   /** Fill in from only this specific category */
-  category?: string
+  category?: D2BucketCategory
 ): LoadoutUpdateFunction {
   return produce((loadout) => {
     const equippedItemsByBucket = _.keyBy(
@@ -405,7 +409,7 @@ export function fillLoadoutFromEquipped(
           loadoutItem.socketOverrides = createSocketOverridesFromEquipped(item);
         }
         loadout.items.push(loadoutItem);
-        mods.push(...extractArmorModHashes(item));
+        mods.push(...extractArmorModHashes(item).map(mapToNonReducedModCostVariant));
       }
     }
     if (mods.length && (loadout.parameters?.mods ?? []).length === 0) {
@@ -414,8 +418,14 @@ export function fillLoadoutFromEquipped(
         mods,
       };
     }
+    if (artifactUnlocks?.unlockedItemHashes.length) {
+      loadout.parameters = {
+        ...loadout.parameters,
+        artifactUnlocks,
+      };
+    }
     // Save "fashion" mods for equipped items
-    const modsByBucket = {};
+    const modsByBucket: { [bucketHash: number]: number[] } = {};
     for (const item of newEquippedItems.filter((i) => i.bucket.inArmor)) {
       const plugs = item.sockets
         ? _.compact(
@@ -444,7 +454,7 @@ export function fillLoadoutFromUnequipped(
   defs: D1ManifestDefinitions | D2ManifestDefinitions,
   store: DimStore,
   /** Fill in from only this specific category */
-  category?: string
+  category?: D2BucketCategory
 ): LoadoutUpdateFunction {
   return (loadout) => {
     const items = getUnequippedItemsForLoadout(store, category);
@@ -501,7 +511,7 @@ export function syncModsFromEquipped(store: DimStore): LoadoutUpdateFunction {
     (item) => item.equipped && itemCanBeInLoadout(item) && item.bucket.sort === 'Armor'
   );
   for (const item of equippedArmor) {
-    mods.push(...extractArmorModHashes(item));
+    mods.push(...extractArmorModHashes(item).map(mapToNonReducedModCostVariant));
   }
 
   return setLoadoutParameters({
@@ -511,9 +521,14 @@ export function syncModsFromEquipped(store: DimStore): LoadoutUpdateFunction {
 
 export function clearBucketCategory(
   defs: D1ManifestDefinitions | D2ManifestDefinitions,
-  category: string
+  category: D2BucketCategory | D1BucketCategory
 ) {
-  return clearBuckets(defs, defs.isDestiny2() ? D2Categories[category] : D1Categories[category]);
+  return clearBuckets(
+    defs,
+    defs.isDestiny2()
+      ? D2Categories[category as D2BucketCategory]
+      : D1Categories[category as D1BucketCategory]
+  );
 }
 
 /**
@@ -554,7 +569,7 @@ export function changeClearMods(enabled: boolean): LoadoutUpdateFunction {
 
 export function updateMods(mods: number[]): LoadoutUpdateFunction {
   return setLoadoutParameters({
-    mods,
+    mods: mods.map(mapToNonReducedModCostVariant),
   });
 }
 
@@ -563,5 +578,42 @@ export function updateModsByBucket(
 ): LoadoutUpdateFunction {
   return setLoadoutParameters({
     modsByBucket: _.isEmpty(modsByBucket) ? undefined : modsByBucket,
+  });
+}
+
+/**
+ * Replace the artifact unlocks with the currently equipped ones.
+ */
+export function syncArtifactUnlocksFromEquipped(
+  store: DimStore,
+  profileResponse: DestinyProfileResponse
+): LoadoutUpdateFunction {
+  const artifactUnlocks = profileResponse && getArtifactUnlocks(profileResponse, store.id);
+
+  return setLoadoutParameters({
+    artifactUnlocks,
+  });
+}
+
+/**
+ * Clear the artifact unlocks.
+ */
+export function clearArtifactUnlocks(): LoadoutUpdateFunction {
+  return setLoadoutParameters({
+    artifactUnlocks: undefined,
+  });
+}
+
+/**
+ * Remove one artifact mod.
+ */
+export function removeArtifactUnlock(mod: number): LoadoutUpdateFunction {
+  return produce((loadout) => {
+    if (loadout.parameters?.artifactUnlocks) {
+      const index = loadout.parameters?.artifactUnlocks.unlockedItemHashes.indexOf(mod);
+      if (index !== -1) {
+        loadout.parameters.artifactUnlocks.unlockedItemHashes.splice(index, 1);
+      }
+    }
   });
 }

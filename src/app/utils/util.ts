@@ -11,7 +11,6 @@ export function count<T>(
   return _.sumBy(list, (item) => (predicate(item) ? 1 : 0));
 }
 
-// TODO: maybe we need a type utils file?
 // Create a type from the keys of an object type that map to values of type PropType
 type PropertiesOfType<T, PropType> = keyof {
   [K in keyof T as T[K] extends PropType ? K : never]: T[K];
@@ -97,7 +96,7 @@ export function download(data: string, filename: string, type: string) {
  * Given an index into an array, which may exceed the bounds of the array in either direction,
  * return a new index that "wraps around".
  *
- * Example:
+ * @example
  * [0, 1][wrap(-1, 2)] === 1
  */
 export const wrap = (index: number, length: number) => {

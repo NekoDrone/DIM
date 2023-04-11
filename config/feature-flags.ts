@@ -19,7 +19,7 @@ export function makeFeatureFlags(env: { release: boolean; beta: boolean; dev: bo
     // Show a banner for supporting a charitable cause
     issueBanner: false,
     // Show the triage tab in the item popup
-    triage: !env.release,
+    triage: true,
     // Advanced Write Actions (inserting mods)
     awa: process.env.USER === 'brh', // Only Ben has the keys...
     // Item feed sidebar
@@ -30,7 +30,7 @@ export function makeFeatureFlags(env: { release: boolean; beta: boolean; dev: bo
     elgatoStreamDeck: true,
     // Warn when DIM Sync is off and you save some DIM-specific data
     warnNoSync: true,
-    // Expose the "Add required stat mods" Loadout Optimizer toggle
+    // Expose the "Automatically add stat mods" Loadout Optimizer toggle
     loAutoStatMods: !env.release,
     // Pretend that Bungie.net is down for maintenance
     simulateBungieMaintenance: false,
@@ -41,5 +41,7 @@ export function makeFeatureFlags(env: { release: boolean; beta: boolean; dev: bo
     // Request the PresentationNodes component only needed during
     // Solstice to associate each character with a set of triumphs.
     solsticePresentationNodes: false,
+    // not ready to turn these on but the code is there
+    customStatWeights: false,
   };
 }

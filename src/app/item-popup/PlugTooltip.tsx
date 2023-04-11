@@ -1,37 +1,46 @@
 import ClarityDescriptions from 'app/clarity/descriptions/ClarityDescriptions';
 import BungieImage from 'app/dim-ui/BungieImage';
-import RichDestinyText from 'app/dim-ui/destiny-symbols/RichDestinyText';
-import ElementIcon from 'app/dim-ui/ElementIcon';
+import { EnergyCostIcon } from 'app/dim-ui/ElementIcon';
 import { Tooltip, useTooltipCustomization } from 'app/dim-ui/PressTip';
+import RichDestinyText from 'app/dim-ui/destiny-symbols/RichDestinyText';
 import { t } from 'app/i18next-t';
 import { resonantElementObjectiveHashes } from 'app/inventory/store/deepsight';
 import { isPluggableItem } from 'app/inventory/store/sockets';
-import { statAllowList } from 'app/inventory/store/stats';
 import { getDamageTypeForSubclassPlug } from 'app/inventory/subclass';
 import { useD2Definitions } from 'app/manifest/selectors';
 import { EXOTIC_CATALYST_TRAIT } from 'app/search/d2-known-values';
 import { thumbsUpIcon } from 'app/shell/icons';
 import AppIcon from 'app/shell/icons/AppIcon';
-import { isPlugStatActive } from 'app/utils/item-utils';
-import { usePlugDescriptions } from 'app/utils/plug-descriptions';
+import { getDimPlugStats, getPlugDefStats, usePlugDescriptions } from 'app/utils/plug-descriptions';
 import { isEnhancedPerk, isModCostVisible } from 'app/utils/socket-utils';
 import { InventoryWishListRoll } from 'app/wishlists/wishlists';
 import {
   DamageType,
-  DestinyEnergyType,
-  DestinyInventoryItemDefinition,
+  DestinyClass,
   DestinyObjectiveProgress,
   DestinyPlugItemCraftingRequirements,
   TierType,
 } from 'bungie-api-ts/destiny2';
 import clsx from 'clsx';
 import enhancedIntrinsics from 'data/d2/crafting-enhanced-intrinsics';
-import _ from 'lodash';
 import { useCallback } from 'react';
-import { DimItem, DimPlug } from '../inventory/item-types';
+import { DimItem, DimPlug, PluggableInventoryItemDefinition } from '../inventory/item-types';
 import Objective from '../progress/Objective';
 import './ItemSockets.scss';
 import styles from './PlugTooltip.m.scss';
+
+interface PlugTooltipProps {
+  def: PluggableInventoryItemDefinition;
+  stats?: { statHash: number; value: number }[];
+  plugObjectives?: DestinyObjectiveProgress[];
+  enableFailReasons?: string;
+  cannotCurrentlyRoll?: boolean;
+  unreliablePerkOption?: boolean;
+  wishListTip?: string;
+  automaticallyPicked?: boolean;
+  hideRequirements?: boolean;
+  craftingData?: DestinyPlugItemCraftingRequirements;
+}
 
 // TODO: Connect this to redux
 export function DimPlugTooltip({
@@ -51,35 +60,7 @@ export function DimPlugTooltip({
     ? t('WishListRoll.BestRatedTip', { count: wishlistRoll.wishListPerks.size })
     : undefined;
 
-  const visibleStats = plug.stats
-    ? _.sortBy(
-        Object.keys(plug.stats)
-          .map((statHashStr) => parseInt(statHashStr, 10))
-          .filter(
-            (statHash) =>
-              statAllowList.includes(statHash) &&
-              isPlugStatActive(
-                item,
-                plug.plugDef,
-                statHash,
-                Boolean(
-                  plug.plugDef.investmentStats.find((s) => s.statTypeHash === Number(statHash))
-                    ?.isConditionallyActive
-                )
-              )
-          ),
-        (h) => statAllowList.indexOf(h)
-      )
-    : [];
-
-  const stats: { [statHash: string]: number } = {};
-
-  for (const statHash of visibleStats) {
-    const value = plug.stats?.[statHash];
-    if (value) {
-      stats[statHash] = value;
-    }
-  }
+  const stats = getDimPlugStats(item, plug);
 
   // Only show Exotic catalyst requirements if the catalyst is incomplete. We assume
   // that an Exotic weapon can only be masterworked if its catalyst is complete.
@@ -103,15 +84,28 @@ export function DimPlugTooltip({
 }
 
 /**
+ * Use this when all you have is a Definition. Otherwise use DimPlugTooltip
+ */
+export function PlugDefTooltip({
+  def,
+  classType,
+  automaticallyPicked,
+}: {
+  def: PluggableInventoryItemDefinition;
+  classType?: DestinyClass;
+  automaticallyPicked?: boolean;
+}) {
+  const stats = getPlugDefStats(def, classType);
+  return <PlugTooltip def={def} stats={stats} automaticallyPicked={automaticallyPicked} />;
+}
+
+/**
  * This creates a tooltip for a plug with various levels of content.
  *
  * It only relies on Bungie API entities, objects or primitives. This is so we can use it to render a
  * tooltip from either a DimPlug or a DestinyInventoryItemDefinition.
- *
- * Use this directly if you want to render a tooltip for a DestinyInventoryItemDefinition, only the def
- * prop is required.
  */
-export function PlugTooltip({
+function PlugTooltip({
   def,
   stats,
   plugObjectives,
@@ -119,27 +113,12 @@ export function PlugTooltip({
   cannotCurrentlyRoll,
   unreliablePerkOption,
   wishListTip,
+  automaticallyPicked,
   hideRequirements,
   craftingData,
-}: {
-  def: DestinyInventoryItemDefinition;
-  stats?: { [statHash: string]: number };
-  plugObjectives?: DestinyObjectiveProgress[];
-  enableFailReasons?: string;
-  cannotCurrentlyRoll?: boolean;
-  unreliablePerkOption?: boolean;
-  wishListTip?: string;
-  hideRequirements?: boolean;
-  craftingData?: DestinyPlugItemCraftingRequirements;
-}) {
+}: PlugTooltipProps) {
   const defs = useD2Definitions();
-  const statsArray =
-    (stats &&
-      Object.entries(stats).map(([statHash, value]) => ({
-        value,
-        statHash: parseInt(statHash, 10),
-      }))) ||
-    [];
+  const statsArray = stats || [];
   const plugDescriptions = usePlugDescriptions(def, statsArray);
   const sourceString =
     defs && def.collectibleHash && defs.Collectible.get(def.collectibleHash).sourceString;
@@ -177,40 +156,34 @@ export function PlugTooltip({
   );
 
   const isPluggable = isPluggableItem(def);
-  const energyCost =
-    isPluggable && defs && isModCostVisible(defs, def.plug) ? def.plug.energyCost : null;
-  const subclassDamageType = isPluggable && defs && getDamageTypeForSubclassPlug(defs, def);
+  const energyCost = isPluggable && isModCostVisible(def.plug) ? def.plug.energyCost : null;
+  const subclassDamageType = isPluggable && getDamageTypeForSubclassPlug(def);
 
   const isInTooltip = useTooltipCustomization({
     getHeader: useCallback(() => def.displayProperties.name, [def.displayProperties.name]),
-    getSubheader: useCallback(() => {
-      const energyType = energyCost && defs?.EnergyType.get(energyCost.energyTypeHash);
-      return (
+    getSubheader: useCallback(
+      () => (
         <div className={styles.subheader}>
           <span>{def.itemTypeDisplayName}</span>
-          {energyType && (
+          {energyCost?.energyCost !== undefined && energyCost.energyCost > 0 && (
             <span className={styles.energyCost}>
-              <ElementIcon element={energyType} className={styles.elementIcon} />
+              <EnergyCostIcon className={styles.elementIcon} />
               {energyCost.energyCost}
             </span>
           )}
         </div>
-      );
-    }, [def.itemTypeDisplayName, energyCost, defs]),
+      ),
+      [def.itemTypeDisplayName, energyCost]
+    ),
     className: clsx(styles.tooltip, {
       [styles.tooltipExotic]: def.inventory?.tierType === TierType.Exotic,
       [styles.tooltipEnhanced]:
         enhancedIntrinsics.has(def.hash) || (isPluggable && isEnhancedPerk(def)),
-      [styles.tooltipElementArc]:
-        energyCost?.energyType === DestinyEnergyType.Arc || subclassDamageType === DamageType.Arc,
-      [styles.tooltipElementSolar]:
-        energyCost?.energyType === DestinyEnergyType.Thermal ||
-        subclassDamageType === DamageType.Thermal,
-      [styles.tooltipElementVoid]:
-        energyCost?.energyType === DestinyEnergyType.Void || subclassDamageType === DamageType.Void,
-      [styles.tooltipElementStasis]:
-        energyCost?.energyType === DestinyEnergyType.Stasis ||
-        subclassDamageType === DamageType.Stasis,
+      [styles.tooltipElementArc]: subclassDamageType === DamageType.Arc,
+      [styles.tooltipElementSolar]: subclassDamageType === DamageType.Thermal,
+      [styles.tooltipElementVoid]: subclassDamageType === DamageType.Void,
+      [styles.tooltipElementStasis]: subclassDamageType === DamageType.Stasis,
+      [styles.tooltipElementStrand]: subclassDamageType === DamageType.Strand,
     }),
   });
 
@@ -286,6 +259,11 @@ export function PlugTooltip({
       {unreliablePerkOption && (
         <Tooltip.Section className={styles.cannotRollSection}>
           <p>{t('MovePopup.UnreliablePerkOption')}</p>
+        </Tooltip.Section>
+      )}
+      {automaticallyPicked && (
+        <Tooltip.Section className={styles.automaticallyPickedSection}>
+          <p>{t('LoadoutBuilder.AutomaticallyPicked')}</p>
         </Tooltip.Section>
       )}
       {wishListTip && (

@@ -1,16 +1,12 @@
-import { settingsSelector } from 'app/dim-api/selectors';
-import {
-  bucketsSelector,
-  itemHashTagsSelector,
-  itemInfosSelector,
-  storesSelector,
-} from 'app/inventory/selectors';
+import { settingSelector, settingsSelector } from 'app/dim-api/selectors';
+import { bucketsSelector, getTagSelector, storesSelector } from 'app/inventory/selectors';
 import {
   capacityForItem,
   findItemsByBucket,
   getVault,
   isD1Store,
 } from 'app/inventory/stores-helpers';
+import { isInInGameLoadoutForSelector } from 'app/loadout-drawer/selectors';
 import { D1BucketHashes, supplies } from 'app/search/d1-known-values';
 import { refresh } from 'app/shell/refresh-events';
 import { ThunkResult } from 'app/store/types';
@@ -22,8 +18,8 @@ import { BucketHashes } from 'data/d2/generated-enums';
 import _ from 'lodash';
 import { InventoryBucket } from '../inventory/inventory-buckets';
 import {
-  createMoveSession,
   MoveReservations,
+  createMoveSession,
   sortMoveAsideCandidatesForStore,
 } from '../inventory/item-move-service';
 import { DimItem } from '../inventory/item-types';
@@ -166,9 +162,9 @@ function makeRoomForItemsInBuckets(
   return async (dispatch, getState) => {
     // If any category is full, we'll move one aside
     const itemsToMove: DimItem[] = [];
-    const itemInfos = itemInfosSelector(getState());
-    const itemHashTags = itemHashTagsSelector(getState());
-    const inventoryClearSpaces = settingsSelector(getState()).inventoryClearSpaces;
+    const getTag = getTagSelector(getState());
+    const isInInGameLoadoutFor = isInInGameLoadoutForSelector(getState());
+    const inventoryClearSpaces = settingSelector('inventoryClearSpaces')(getState());
     for (const bucket of makeRoomBuckets) {
       const items = findItemsByBucket(store, bucket.hash);
       if (items.length > 0) {
@@ -180,8 +176,8 @@ function makeRoomForItemsInBuckets(
             moveAsideCandidates,
             store,
             getVault(stores)!,
-            itemInfos,
-            itemHashTags
+            getTag,
+            isInInGameLoadoutFor
           );
           // We'll move the first one to the vault
           const itemToMove = prioritizedMoveAsideCandidates[0];

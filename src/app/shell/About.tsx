@@ -2,6 +2,7 @@ import { getToken } from 'app/bungie-api/oauth-tokens';
 import { clarityDiscordLink, clarityLink } from 'app/clarity/about';
 import StaticPage from 'app/dim-ui/StaticPage';
 import { t } from 'app/i18next-t';
+import { isAppStoreVersion } from 'app/utils/browsers';
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { UAParser } from 'ua-parser-js';
@@ -46,13 +47,20 @@ function getSystemInfo() {
   const parser = new UAParser();
   const { name: browserName, version: browserVersion } = parser.getBrowser();
   const { name: osName, version: osVersion } = parser.getOS();
-  const info = `${browserName} ${browserVersion} - ${osName} ${osVersion}`;
+  const userAgent = parser.getUA();
+  const dimAppStoreIndex = userAgent.indexOf('DIM AppStore');
+  let browserInfo = `${browserName} ${browserVersion}`;
+  if (dimAppStoreIndex >= 0) {
+    browserInfo = userAgent.substring(dimAppStoreIndex);
+  }
+
+  const info = `${browserInfo} - ${osName} ${osVersion}`;
   return info;
 }
 
 export default function About() {
   // The App Store version can't show donation links I guess?
-  const iOSApp = document.cookie.includes('app-platform=iOS App Store;');
+  const iOSApp = isAppStoreVersion();
 
   useEffect(() => {
     if (iOSApp) {

@@ -2,20 +2,20 @@ import { D1Categories } from 'app/destiny1/d1-bucket-categories';
 import { D2Categories } from 'app/destiny2/d2-bucket-categories';
 import { interruptFarming, resumeFarming } from 'app/farming/basic-actions';
 import { t } from 'app/i18next-t';
+import { loadoutNotification } from 'app/inventory/MoveNotifications';
 import { canInsertPlug, insertPlug } from 'app/inventory/advanced-write-actions';
 import { updateCharacters } from 'app/inventory/d2-stores';
 import {
-  createMoveSession,
-  equipItems,
   Exclusion,
-  executeMoveItem,
-  getSimilarItem,
   MoveReservations,
   MoveSession,
+  createMoveSession,
+  equipItems,
+  executeMoveItem,
+  getSimilarItem,
 } from 'app/inventory/item-move-service';
 import { DimItem, DimSocket, PluggableInventoryItemDefinition } from 'app/inventory/item-types';
 import { updateManualMoveTimestamp } from 'app/inventory/manual-moves';
-import { loadoutNotification } from 'app/inventory/MoveNotifications';
 import {
   allItemsSelector,
   storesSelector,
@@ -30,56 +30,58 @@ import {
   getVault,
   spaceLeftForItem,
 } from 'app/inventory/stores-helpers';
-import { inGameArmorEnergyRules, LockableBucketHashes } from 'app/loadout-builder/types';
+import { LockableBucketHashes, inGameArmorEnergyRules } from 'app/loadout-builder/types';
 import {
   createPluggingStrategy,
   fitMostMods,
   pickPlugPositions,
 } from 'app/loadout/mod-assignment-utils';
-import { unlockedByAllModsBeingUnlocked } from 'app/loadout/mod-utils';
 import {
   d2ManifestSelector,
   destiny2CoreSettingsSelector,
   manifestSelector,
 } from 'app/manifest/selectors';
 import { showNotification } from 'app/notifications/notifications';
+import { D1BucketHashes } from 'app/search/d1-known-values';
 import { DEFAULT_ORNAMENTS, DEFAULT_SHADER } from 'app/search/d2-known-values';
 import { loadingTracker } from 'app/shell/loading-tracker';
 import { ThunkResult } from 'app/store/types';
-import { artifactModsSelector } from 'app/strip-sockets/strip-sockets';
 import { queueAction } from 'app/utils/action-queue';
-import { CanceledError, CancelToken, withCancel } from 'app/utils/cancel';
+import { CancelToken, CanceledError, withCancel } from 'app/utils/cancel';
 import { DimError } from 'app/utils/dim-error';
 import { emptyArray } from 'app/utils/empty';
 import { itemCanBeEquippedBy } from 'app/utils/item-utils';
 import { errorLog, infoLog, timer, warnLog } from 'app/utils/log';
 import {
+  aspectSocketCategoryHashes,
+  fragmentSocketCategoryHashes,
   getDefaultAbilityChoiceHash,
   getSocketByIndex,
   getSocketsByIndexes,
   plugFitsIntoSocket,
 } from 'app/utils/socket-utils';
 import { count } from 'app/utils/util';
+import { HashLookup } from 'app/utils/util-types';
 import { DestinyClass, PlatformErrorCodes } from 'bungie-api-ts/destiny2';
-import { BucketHashes, SocketCategoryHashes } from 'data/d2/generated-enums';
-import produce from 'immer';
+import { BucketHashes } from 'data/d2/generated-enums';
+import produce, { Draft } from 'immer';
 import _ from 'lodash';
 import { savePreviousLoadout } from './actions';
 import {
-  anyActionFailed,
   LoadoutApplyPhase,
   LoadoutItemState,
   LoadoutModState,
   LoadoutSocketOverrideState,
   LoadoutStateGetter,
   LoadoutStateUpdater,
+  anyActionFailed,
   makeLoadoutApplyState,
   setLoadoutApplyPhase,
   setModResult,
   setSocketOverrideResult,
 } from './loadout-apply-state';
 import { Assignment, Loadout, LoadoutItem } from './loadout-types';
-import { backupLoadout, findItemForLoadout, getModHashesFromLoadout } from './loadout-utils';
+import { backupLoadout, findItemForLoadout, getModsFromLoadout } from './loadout-utils';
 
 // TODO: move this whole file to "loadouts" folder
 
@@ -91,7 +93,7 @@ const outOfSpaceWarning = _.throttle((store) => {
   });
 }, 60000);
 
-const sortedBucketHashes = [
+const sortedBucketHashes: (BucketHashes | D1BucketHashes)[] = [
   ...D2Categories.Weapons,
   ...D2Categories.Armor,
   ...D2Categories.General,
@@ -100,9 +102,9 @@ const sortedBucketHashes = [
   ...D1Categories.Armor,
   ...D1Categories.General,
 ];
-const bucketHashToIndex = {};
+const bucketHashToIndex: HashLookup<number> = {};
 for (let i = 0; i < sortedBucketHashes.length; i++) {
-  bucketHashToIndex[sortedBucketHashes[i]] = i;
+  (bucketHashToIndex as Draft<typeof bucketHashToIndex>)[sortedBucketHashes[i]] = i;
 }
 
 /**
@@ -228,7 +230,7 @@ function doApplyLoadout(
 
       // Sort loadout items by their bucket so we move items in the order that DIM displays them
       const applicableLoadoutItems = _.sortBy(resolvedItems, ({ item }) => {
-        const sortIndex = bucketHashToIndex[item.bucket.hash];
+        const sortIndex = bucketHashToIndex[item.bucket.hash as BucketHashes];
         return sortIndex === undefined ? Number.MAX_SAFE_INTEGER : sortIndex;
       }).map(({ loadoutItem }) => loadoutItem);
 
@@ -247,25 +249,25 @@ function doApplyLoadout(
       });
 
       // Filter out mods that no longer exist or that aren't unlocked on this character
-      const unlockedPlugSetItems = _.once(() => unlockedPlugSetItemsSelector(getState(), store.id));
-      const artifactMods = artifactModsSelector(getState());
+      const unlockedPlugSetItems = _.once(() => unlockedPlugSetItemsSelector(store.id)(getState()));
       const checkMod = (h: number) => {
         const mod = defs.InventoryItem.get(h);
         return (
           Boolean(mod) &&
-          (unlockedPlugSetItems().has(h) ||
-            h === DEFAULT_SHADER ||
-            DEFAULT_ORNAMENTS.includes(h) ||
-            ('plug' in mod &&
-              isPluggableItem(mod) &&
-              unlockedByAllModsBeingUnlocked(mod, artifactMods)))
+          (unlockedPlugSetItems().has(h) || h === DEFAULT_SHADER || DEFAULT_ORNAMENTS.includes(h))
         );
       };
 
       // Don't apply mods when moving to the vault
-      const modsToApply = ((!store.isVault && getModHashesFromLoadout(loadout)) || []).filter(
-        checkMod
-      );
+      const modsToApply = (
+        (defs.isDestiny2() &&
+          !store.isVault &&
+          getModsFromLoadout(defs, loadout, unlockedPlugSetItems()).map(
+            (mod) => mod.resolvedMod.hash
+          )) ||
+        []
+      ).filter(checkMod);
+
       // Mods specific to a bucket but not an item - fashion mods (shader/ornament)
       const modsByBucketToApply: {
         [bucketHash: number]: number[];
@@ -394,7 +396,7 @@ function doApplyLoadout(
           // else - so choose an appropriate replacement for each item.
           const itemsToEquip = _.compact(
             dequipItems.map((i) =>
-              getSimilarItem(getStores(), i, {
+              getSimilarItem(getState, getStores(), i, {
                 exclusions: applicableLoadoutItems,
                 excludeExotic: i.isExotic,
               })
@@ -972,15 +974,15 @@ function applySocketOverrides(
             }
           };
 
-          if (category.category.hash === SocketCategoryHashes.Aspects) {
+          if (aspectSocketCategoryHashes.includes(category.category.hash)) {
             handleShuffledSockets(category.socketIndexes);
-          } else if (category.category.hash === SocketCategoryHashes.Fragments) {
+          } else if (fragmentSocketCategoryHashes.includes(category.category.hash)) {
             // For fragments, we first need to figure out how many sockets we have available.
             // If the loadout specifies overrides for aspects, we use all override aspects to calculate
             // fragment capacity, otherwise we look at the item itself because we don't unplug any aspects
             // if the overrides don't list any.
-            const aspectSocketIndices = dimItem.sockets!.categories.find(
-              (c) => c.category.hash === SocketCategoryHashes.Aspects
+            const aspectSocketIndices = dimItem.sockets!.categories.find((c) =>
+              aspectSocketCategoryHashes.includes(c.category.hash)
             )!.socketIndexes;
             let aspectDefs = _.compact(
               aspectSocketIndices.map((aspectSocketIndex) => {
@@ -1124,6 +1126,7 @@ function applyLoadoutMods(
 
     // TODO: prefer equipping to armor that *is* part of the loadout
     const { itemModAssignments, unassignedMods } = fitMostMods({
+      defs,
       items: armor,
       plannedMods: mods,
       armorEnergyRules: inGameArmorEnergyRules,

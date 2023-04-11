@@ -1,10 +1,11 @@
+import { CustomStatDef } from '@destinyitemmanager/dim-api-types';
 import { D2Categories } from 'app/destiny2/d2-bucket-categories';
 import { t } from 'app/i18next-t';
 import { isTrialsPassage, isWinsObjective } from 'app/inventory/store/objectives';
 import {
   D2ItemTiers,
-  d2MissingIcon,
   THE_FORBIDDEN_BUCKET,
+  d2MissingIcon,
   uniqueEquipBuckets,
 } from 'app/search/d2-known-values';
 import { lightStats } from 'app/search/search-filter-values';
@@ -119,14 +120,16 @@ export function processItems(
   return result;
 }
 
-const getClassTypeNameLocalized = _.memoize((type: DestinyClass, defs: D2ManifestDefinitions) => {
-  const klass = Object.values(defs.Class).find((c) => c.classType === type);
-  if (klass) {
-    return klass.displayProperties.name;
-  } else {
-    return t('Loadouts.Any');
+export const getClassTypeNameLocalized = _.memoize(
+  (type: DestinyClass, defs: D2ManifestDefinitions) => {
+    const klass = Object.values(defs.Class).find((c) => c.classType === type);
+    if (klass) {
+      return klass.displayProperties.name;
+    } else {
+      return t('Loadouts.Any');
+    }
   }
-});
+);
 
 /** Make a "fake" item from other information - used for Collectibles, etc. */
 export function makeFakeItem(
@@ -213,9 +216,7 @@ export interface ItemCreationContext {
   defs: D2ManifestDefinitions;
   buckets: InventoryBuckets;
   profileResponse: DestinyProfileResponse;
-  customTotalStatsByClass: {
-    [key: number]: number[];
-  };
+  customStats: CustomStatDef[];
   /**
    * Sometimes comes from the profile response, but also sometimes from vendors response or mocked out.
    * If not present, the itemComponents from the DestinyProfileResponse should be used.
@@ -227,7 +228,7 @@ export interface ItemCreationContext {
  * Process a single raw item into a DIM item.
  */
 export function makeItem(
-  { defs, buckets, itemComponents, customTotalStatsByClass, profileResponse }: ItemCreationContext,
+  { defs, buckets, itemComponents, customStats, profileResponse }: ItemCreationContext,
   item: DestinyItemComponent,
   /** the ID of the owning store - can be undefined for fake collections items */
   owner: DimStore | undefined
@@ -357,8 +358,6 @@ export function makeItem(
       defs.DamageType.get(itemInstanceData.damageTypeHash)) ||
     (itemDef.defaultDamageTypeHash !== undefined &&
       defs.DamageType.get(itemDef.defaultDamageTypeHash)) ||
-    (itemInstanceData.energy?.energyTypeHash !== undefined &&
-      defs.EnergyType.get(itemInstanceData.energy.energyTypeHash)) ||
     null;
 
   const powerCapHash =
@@ -431,7 +430,7 @@ export function makeItem(
         ? // equipped armor gets marked as that character's class
           owner.classType
         : // unequipped armor gets marked "no class"
-          -1
+          DestinyClass.Classified
       : // other items are marked "any class"
         DestinyClass.Unknown
     : itemDef.classType;
@@ -500,10 +499,6 @@ export function makeItem(
     displaySource: itemDef.displaySource,
     plug: itemDef.plug && {
       energyCost: itemDef.plug.energyCost?.energyCost || 0,
-      costElementIcon: itemDef.plug.energyCost
-        ? defs.Stat.get(defs.EnergyType.get(itemDef.plug.energyCost.energyTypeHash).costStatHash)
-            .displayProperties.icon
-        : undefined,
     },
     metricHash: item.metricHash,
     metricObjective: item.metricObjective,
@@ -548,10 +543,10 @@ export function makeItem(
     ).displayProperties;
   }
 
-  if (extendedICH[createdItem.hash]) {
+  if (createdItem.hash in extendedICH) {
     createdItem.itemCategoryHashes = [
       ...createdItem.itemCategoryHashes,
-      extendedICH[createdItem.hash],
+      extendedICH[createdItem.hash]!,
     ];
     // Masks are helmets too
     if (extendedICH[createdItem.hash] === ItemCategoryHashes.Mask) {
@@ -600,7 +595,7 @@ export function makeItem(
   }
 
   try {
-    createdItem.stats = buildStats(defs, createdItem, customTotalStatsByClass, itemDef);
+    createdItem.stats = buildStats(defs, createdItem, customStats, itemDef);
   } catch (e) {
     errorLog('d2-stores', `Error building stats for ${createdItem.name}`, item, itemDef, e);
     reportException('Stats', e, { itemHash: item.itemHash });
@@ -676,8 +671,8 @@ export function makeItem(
     }
   }
 
-  if (extendedBreaker[createdItem.hash]) {
-    createdItem.breakerType = defs.BreakerType.get(extendedBreaker[createdItem.hash]);
+  if (createdItem.hash in extendedBreaker) {
+    createdItem.breakerType = defs.BreakerType.get(extendedBreaker[createdItem.hash]!);
   }
 
   // TODO: compute this on demand

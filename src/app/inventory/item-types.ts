@@ -6,7 +6,6 @@ import {
   DestinyClass,
   DestinyDamageTypeDefinition,
   DestinyDisplayPropertiesDefinition,
-  DestinyEnergyTypeDefinition,
   DestinyInventoryItemDefinition,
   DestinyItemInstanceEnergy,
   DestinyItemPerkEntryDefinition,
@@ -97,9 +96,9 @@ export interface DimItem {
   uniqueStack: boolean;
   /**
    * The class this item is restricted to. DestinyClass.Unknown means it can be used by any class.
-   * -1 is for classified armor, which, until proven otherwise, can't be equipped by any class.
+   * DestinyClass.Classified is for classified armor, which, until proven otherwise, can't be equipped by any class.
    * */
-  classType: DestinyClass | -1;
+  classType: DestinyClass;
   /** The localized name of the class this item is restricted to. */
   classTypeNameLocalized: string;
   /** Whether this item can be locked. */
@@ -144,7 +143,6 @@ export interface DimItem {
   /** Information about this item as a plug. Mostly useful for mod collectibles. */
   plug?: {
     energyCost: number;
-    costElementIcon?: string;
   };
   /** Extra pursuit info, if this item is a quest or bounty. */
   pursuit: DimPursuit | null;
@@ -164,8 +162,8 @@ export interface DimItem {
 
   // Dynamic data - this may change between profile updates
 
-  /** The damage type this weapon deals, or energy type of armor, or damage type corresponding to the item's elemental resistance. */
-  element: DestinyDamageTypeDefinition | DestinyEnergyTypeDefinition | null;
+  /** The damage type this weapon deals, or damage type corresponding to the item's elemental resistance. */
+  element: DestinyDamageTypeDefinition | null;
   /** Whether this item CANNOT be transferred. */
   notransfer: boolean;
   /** Is this item complete (leveled, unlocked, objectives complete)? */
@@ -214,8 +212,8 @@ export interface DimItem {
    * Optional in case we ever fail to match items to their record.
    */
   patternUnlockRecord?: DestinyRecordComponent;
-  /** If this item has Deepsight Resonance, this includes info about its Deepsight properties. */
-  deepsightInfo?: DimDeepsight;
+  /** If this item has Deepsight Resonance (a pattern can be extracted). */
+  deepsightInfo?: boolean;
   /** If this item has a catalyst, this includes info about its catalyst properties. */
   catalystInfo?: DimCatalyst;
   /** an item's current breaker type, if it has one */
@@ -253,11 +251,13 @@ export interface DimMasterwork {
   tier?: number;
   /** The stats that are enhanced by this masterwork. */
   stats?: {
-    hash?: number;
+    hash: number;
     /** The name of the stat enhanced by this masterwork. */
-    name?: string;
+    name: string;
     /** How much the stat is enhanced by this masterwork. */
-    value?: number;
+    value: number;
+    /** Is this a primary stat effect or secondary? Adept/crafted weapons can get a small +X to all stats; these are secondary */
+    isPrimary: boolean;
   }[];
 }
 
@@ -268,11 +268,6 @@ export interface DimCrafted {
   progress?: number;
   /** when this weapon was crafted, UTC epoch seconds timestamp */
   craftedDate?: number;
-}
-
-export interface DimDeepsight {
-  /** Progress of attuning the item - when complete, a resonant material can be extracted */
-  attunementObjective: DestinyObjectiveProgress;
 }
 
 export interface DimCatalyst {
@@ -426,6 +421,9 @@ export interface DimPlugSet {
    * want to access DimSocket.emptyPlugItemHash instead!
    */
   readonly precomputedEmptyPlugItemHash?: number;
+
+  /** A precomputed list of plug hashes that can not roll on current versions of the item. */
+  readonly plugHashesThatCannotRoll: number[];
 }
 
 export interface DimSocket {
@@ -479,8 +477,6 @@ export interface DimSocket {
    */
   craftingData?: { [plugHash: number]: DestinyPlugItemCraftingRequirements | undefined };
 
-  /** Plug hashes in this item visible in the collections roll, if this is a perk */
-  curatedRoll: number[] | null;
   /**
    * The plug item hash used to reset this plug to an empty default plug.
    * This is a heuristic improvement over singleInitialItemHash, but it's

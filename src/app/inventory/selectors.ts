@@ -1,18 +1,24 @@
-import { ItemHashTag } from '@destinyitemmanager/dim-api-types';
+import { ItemHashTag, LoadoutParameters } from '@destinyitemmanager/dim-api-types';
 import { destinyVersionSelector } from 'app/accounts/selectors';
-import { currentProfileSelector, settingSelector, settingsSelector } from 'app/dim-api/selectors';
+import {
+  currentProfileSelector,
+  customStatsSelector,
+  settingsSelector,
+} from 'app/dim-api/selectors';
 import { d2ManifestSelector } from 'app/manifest/selectors';
 import { RootState } from 'app/store/types';
 import { emptyObject, emptySet } from 'app/utils/empty';
-import { DestinyItemPlug } from 'bungie-api-ts/destiny2';
+import { currySelector } from 'app/utils/selector-utils';
+import { DestinyItemPlug, DestinyProfileResponse } from 'bungie-api-ts/destiny2';
 import { resonantMaterialStringVarHashes } from 'data/d2/crafting-resonant-elements';
+import { D2CalculatedSeason } from 'data/d2/d2-season-info';
 import { BucketHashes, ItemCategoryHashes } from 'data/d2/generated-enums';
 import universalOrnamentPlugSetHashes from 'data/d2/universal-ornament-plugset-hashes.json';
 import { createSelector } from 'reselect';
 import { getBuckets as getBucketsD1 } from '../destiny1/d1-buckets';
 import { getBuckets as getBucketsD2 } from '../destiny2/d2-buckets';
 import { characterSortImportanceSelector, characterSortSelector } from '../settings/character-sort';
-import { getTag, ItemInfos } from './dim-item-info';
+import { ItemInfos, getNotes, getTag } from './dim-item-info';
 import { DimItem } from './item-types';
 import { collectNotesHashtags } from './note-hashtags';
 import { ItemCreationContext } from './store/d2-item-factory';
@@ -115,7 +121,8 @@ export const materialsSelector = (state: RootState) =>
     (i) =>
       i.itemCategoryHashes.includes(ItemCategoryHashes.Materials) ||
       i.itemCategoryHashes.includes(ItemCategoryHashes.ReputationTokens) ||
-      i.hash === 3702027555 // Spoils of Conquest do not have item category hashes
+      i.hash === 3702027555 || // Spoils of Conquest do not have item category hashes
+      i.hash === 1289622079 // neither do Strand Meditations
   );
 
 /** The actual raw profile response from the Bungie.net profile API */
@@ -174,12 +181,12 @@ export const createItemContextSelector = createSelector(
   d2ManifestSelector,
   profileResponseSelector,
   bucketsSelector,
-  (state: RootState) => settingSelector('customTotalStatsByClass')(state),
-  (defs, profileResponse, buckets, customTotalStatsByClass): ItemCreationContext => ({
+  customStatsSelector,
+  (defs, profileResponse, buckets, customStats): ItemCreationContext => ({
     defs: defs!,
     buckets: buckets!,
     profileResponse: profileResponse!,
-    customTotalStatsByClass,
+    customStats,
   })
 );
 
@@ -241,7 +248,7 @@ export const ownedUncollectiblePlugsSelector = createSelector(
   profileResponseSelector,
   (defs, profileResponse) => {
     const accountWideOwned = new Set<number>();
-    const storeSpecificOwned = {};
+    const storeSpecificOwned: { [storeId: string]: Set<number> } = {};
 
     if (defs && profileResponse) {
       const processPlugSet = (
@@ -279,37 +286,39 @@ export const ownedUncollectiblePlugsSelector = createSelector(
 
 /** A set containing all the hashes of unlocked PlugSet items (mods, shaders, ornaments, etc) for the given character. */
 // TODO: reconcile with other owned/unlocked selectors
-export const unlockedPlugSetItemsSelector = createSelector(
-  (_state: RootState, characterId?: string) => characterId,
-  profileResponseSelector,
-  (characterId, profileResponse) => {
-    const unlockedPlugs = new Set<number>();
-    if (profileResponse?.profilePlugSets.data?.plugs) {
-      for (const plugSetHashStr in profileResponse.profilePlugSets.data.plugs) {
-        const plugSetHash = parseInt(plugSetHashStr, 10);
-        const plugs = profileResponse.profilePlugSets.data.plugs[plugSetHash];
-        for (const plugSetItem of plugs) {
-          const useCanInsert = universalOrnamentPlugSetHashes.includes(plugSetHash);
-          if (useCanInsert ? plugSetItem.canInsert : plugSetItem.enabled) {
-            unlockedPlugs.add(plugSetItem.plugItemHash);
+export const unlockedPlugSetItemsSelector = currySelector(
+  createSelector(
+    (_state: RootState, characterId?: string) => characterId,
+    profileResponseSelector,
+    (characterId, profileResponse) => {
+      const unlockedPlugs = new Set<number>();
+      if (profileResponse?.profilePlugSets.data?.plugs) {
+        for (const plugSetHashStr in profileResponse.profilePlugSets.data.plugs) {
+          const plugSetHash = parseInt(plugSetHashStr, 10);
+          const plugs = profileResponse.profilePlugSets.data.plugs[plugSetHash];
+          for (const plugSetItem of plugs) {
+            const useCanInsert = universalOrnamentPlugSetHashes.includes(plugSetHash);
+            if (useCanInsert ? plugSetItem.canInsert : plugSetItem.enabled) {
+              unlockedPlugs.add(plugSetItem.plugItemHash);
+            }
           }
         }
       }
-    }
-    if (characterId && profileResponse?.characterPlugSets.data?.[characterId]?.plugs) {
-      for (const plugSetHashStr in profileResponse.characterPlugSets.data[characterId].plugs) {
-        const plugSetHash = parseInt(plugSetHashStr, 10);
-        const plugs = profileResponse.characterPlugSets.data[characterId].plugs[plugSetHash];
-        for (const plugSetItem of plugs) {
-          const useCanInsert = universalOrnamentPlugSetHashes.includes(plugSetHash);
-          if (useCanInsert ? plugSetItem.canInsert : plugSetItem.enabled) {
-            unlockedPlugs.add(plugSetItem.plugItemHash);
+      if (characterId && profileResponse?.characterPlugSets.data?.[characterId]?.plugs) {
+        for (const plugSetHashStr in profileResponse.characterPlugSets.data[characterId].plugs) {
+          const plugSetHash = parseInt(plugSetHashStr, 10);
+          const plugs = profileResponse.characterPlugSets.data[characterId].plugs[plugSetHash];
+          for (const plugSetItem of plugs) {
+            const useCanInsert = universalOrnamentPlugSetHashes.includes(plugSetHash);
+            if (useCanInsert ? plugSetItem.canInsert : plugSetItem.enabled) {
+              unlockedPlugs.add(plugSetItem.plugItemHash);
+            }
           }
         }
       }
+      return unlockedPlugs;
     }
-    return unlockedPlugs;
-  }
+  )
 );
 
 /** gets all the dynamic strings from a profile response */
@@ -337,6 +346,36 @@ export const dynamicStringsSelector = (state: RootState) => {
   }
 };
 
+export const artifactUnlocksSelector = currySelector(
+  createSelector(
+    profileResponseSelector,
+    (_state: RootState, characterId: string) => characterId,
+    (profileResponse: DestinyProfileResponse | undefined, characterId: string) =>
+      profileResponse && getArtifactUnlocks(profileResponse, characterId)
+  )
+);
+
+/** A flat list of all currently active artifact unlocks. */
+export function getArtifactUnlocks(
+  profileResponse: DestinyProfileResponse,
+  characterId: string
+): LoadoutParameters['artifactUnlocks'] {
+  // Lots of optional chaining because apparently this can be missing sometimes?
+  const artifactData = profileResponse?.characterProgressions.data?.[characterId]?.seasonalArtifact;
+  if (!artifactData?.tiers) {
+    return undefined;
+  }
+  const unlockedItemHashes =
+    artifactData.tiers
+      ?.flatMap((tier) => tier.items)
+      .filter((item) => item.isActive)
+      .map((item) => item.itemHash) || [];
+  return {
+    unlockedItemHashes,
+    seasonNumber: D2CalculatedSeason,
+  };
+}
+
 /** Item infos (tags/notes) */
 export const itemInfosSelector = (state: RootState): ItemInfos =>
   currentProfileSelector(state)?.tags || emptyObject();
@@ -347,9 +386,28 @@ export const itemInfosSelector = (state: RootState): ItemInfos =>
 export const itemHashTagsSelector = (state: RootState): { [itemHash: string]: ItemHashTag } =>
   state.dimApi.itemHashTags;
 
+/* Returns a function that can be used to get the tag for a particular item. */
+export const getTagSelector = createSelector(
+  itemInfosSelector,
+  itemHashTagsSelector,
+  (itemInfos, itemHashTags) => (item: DimItem) => getTag(item, itemInfos, itemHashTags)
+);
+
+/* Returns a function that can be used to get the notes for a particular item. */
+export const getNotesSelector = createSelector(
+  itemInfosSelector,
+  itemHashTagsSelector,
+  (itemInfos, itemHashTags) => (item: DimItem) => getNotes(item, itemInfos, itemHashTags)
+);
+
 /** Get a specific item's tag */
-export const tagSelector = (item: DimItem) => (state: RootState) =>
-  getTag(item, itemInfosSelector(state), itemHashTagsSelector(state));
+export const tagSelector = (item: DimItem) => (state: RootState) => getTagSelector(state)(item);
+
+/** Get a specific item's notes */
+export const notesSelector = (item: DimItem) => (state: RootState) => getNotesSelector(state)(item);
+
+export const hasNotesSelector = (item: DimItem) => (state: RootState) =>
+  Boolean(getNotesSelector(state)(item));
 
 /**
  * all hashtags used in existing item notes, with (case-insensitive) dupes removed

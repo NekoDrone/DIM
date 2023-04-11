@@ -3,11 +3,11 @@ import { t } from 'app/i18next-t';
 import { DimItem, PluggableInventoryItemDefinition } from 'app/inventory/item-types';
 import { DimStore } from 'app/inventory/store-types';
 import { hideItemPicker, showItemPicker } from 'app/item-picker/item-picker';
-import { ResolvedLoadoutItem } from 'app/loadout-drawer/loadout-types';
+import { ResolvedLoadoutItem, ResolvedLoadoutMod } from 'app/loadout-drawer/loadout-types';
+import SubclassPlugDrawer from 'app/loadout/SubclassPlugDrawer';
 import { isLoadoutBuilderItem, pickSubclass } from 'app/loadout/item-utils';
 import PlugDef from 'app/loadout/loadout-ui/PlugDef';
 import { createGetModRenderKey } from 'app/loadout/mod-utils';
-import SubclassPlugDrawer from 'app/loadout/SubclassPlugDrawer';
 import { useD2Definitions } from 'app/manifest/selectors';
 import { ItemFilter } from 'app/search/filter-types';
 import { AppIcon, faTimesCircle, pinIcon } from 'app/shell/icons';
@@ -18,13 +18,13 @@ import {
   getDefaultAbilityChoiceHash,
   getSocketByIndex,
   getSocketsByCategoryHashes,
+  subclassAbilitySocketCategoryHashes,
 } from 'app/utils/socket-utils';
 import { Portal } from 'app/utils/temp-container';
-import { SocketCategoryHashes } from 'data/d2/generated-enums';
 import _ from 'lodash';
 import React, { Dispatch, memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { LoadoutBuilderAction } from '../loadout-builder-reducer';
 import LoadoutBucketDropTarget from '../LoadoutBucketDropTarget';
+import { LoadoutBuilderAction } from '../loadout-builder-reducer';
 import { ExcludedItems, LockableBucketHashes, PinnedItems } from '../types';
 import ExoticArmorChoice from './ExoticArmorChoice';
 import ExoticPicker from './ExoticPicker';
@@ -35,8 +35,8 @@ interface Props {
   selectedStore: DimStore;
   pinnedItems: PinnedItems;
   excludedItems: ExcludedItems;
-  lockedMods: PluggableInventoryItemDefinition[];
-  subclass?: ResolvedLoadoutItem;
+  lockedMods: ResolvedLoadoutMod[];
+  subclass: ResolvedLoadoutItem | undefined;
   lockedExoticHash?: number;
   searchFilter: ItemFilter;
   autoStatMods: boolean;
@@ -103,7 +103,7 @@ export default memo(function LockArmorAndPerks({
     }
   };
 
-  const onModClicked = (mod: PluggableInventoryItemDefinition) =>
+  const onModClicked = (mod: ResolvedLoadoutMod) =>
     lbDispatch({
       type: 'removeLockedMod',
       mod,
@@ -149,11 +149,10 @@ export default memo(function LockArmorAndPerks({
     for (const socketIndexString of Object.keys(subclass?.loadoutItem.socketOverrides)) {
       const socketIndex = parseInt(socketIndexString, 10);
       const socket = getSocketByIndex(subclass.item.sockets, socketIndex);
-      const abilityAndSuperSockets = getSocketsByCategoryHashes(subclass.item.sockets, [
-        SocketCategoryHashes.Abilities_Abilities,
-        SocketCategoryHashes.Abilities_Abilities_LightSubclass,
-        SocketCategoryHashes.Super,
-      ]);
+      const abilityAndSuperSockets = getSocketsByCategoryHashes(
+        subclass.item.sockets,
+        subclassAbilitySocketCategoryHashes
+      );
 
       const overridePlug = defs.InventoryItem.get(
         subclass.loadoutItem.socketOverrides[socketIndex]
@@ -211,7 +210,12 @@ export default memo(function LockArmorAndPerks({
         {Boolean(lockedMods.length) && (
           <div className={styles.itemGrid}>
             {lockedMods.map((mod) => (
-              <PlugDef key={getModRenderKey(mod)} plug={mod} onClose={() => onModClicked(mod)} />
+              <PlugDef
+                key={getModRenderKey(mod.resolvedMod)}
+                plug={mod.resolvedMod}
+                onClose={() => onModClicked(mod)}
+                forClassType={selectedStore.classType}
+              />
             ))}
           </div>
         )}
@@ -242,6 +246,7 @@ export default memo(function LockArmorAndPerks({
                     ? undefined
                     : () => lbDispatch({ type: 'removeSingleSubclassSocketOverride', plug })
                 }
+                forClassType={selectedStore.classType}
               />
             ))}
           </div>

@@ -1,30 +1,31 @@
-import { DestinyVersion } from '@destinyitemmanager/dim-api-types';
+import { CustomStatDef, DestinyVersion } from '@destinyitemmanager/dim-api-types';
 import { StoreIcon } from 'app/character-tile/StoreIcon';
 import { StatInfo } from 'app/compare/Compare';
 import BungieImage from 'app/dim-ui/BungieImage';
-import { StatTotalToggle } from 'app/dim-ui/CustomStatTotal';
 import ElementIcon from 'app/dim-ui/ElementIcon';
 import { KillTrackerInfo } from 'app/dim-ui/KillTracker';
 import { PressTip, Tooltip } from 'app/dim-ui/PressTip';
 import { SpecialtyModSlotIcon } from 'app/dim-ui/SpecialtyModSlotIcon';
 import { t, tl } from 'app/i18next-t';
-import { getNotes, getTag, ItemInfos, tagConfig } from 'app/inventory/dim-item-info';
-import { D1Item, DimItem, DimSocket } from 'app/inventory/item-types';
 import ItemIcon, { DefItemIcon } from 'app/inventory/ItemIcon';
 import ItemPopupTrigger from 'app/inventory/ItemPopupTrigger';
 import NewItemIndicator from 'app/inventory/NewItemIndicator';
+import TagIcon from 'app/inventory/TagIcon';
+import { TagValue, tagConfig } from 'app/inventory/dim-item-info';
+import { D1Item, DimItem, DimSocket } from 'app/inventory/item-types';
 import { storesSelector } from 'app/inventory/selectors';
 import { source } from 'app/inventory/spreadsheets';
 import { getEvent, getSeason } from 'app/inventory/store/season';
-import { statAllowList } from 'app/inventory/store/stats';
+import { getStatSortOrder } from 'app/inventory/store/stats';
 import { getStore } from 'app/inventory/stores-helpers';
-import TagIcon from 'app/inventory/TagIcon';
 import { ItemStatValue } from 'app/item-popup/ItemStat';
 import NotesArea from 'app/item-popup/NotesArea';
 import { DimPlugTooltip } from 'app/item-popup/PlugTooltip';
 import { recoilValue } from 'app/item-popup/RecoilStat';
+import { editLoadout } from 'app/loadout-drawer/loadout-events';
+import { InGameLoadout, Loadout, isInGameLoadout } from 'app/loadout-drawer/loadout-types';
 import { LoadoutsByItem } from 'app/loadout-drawer/selectors';
-import { CUSTOM_TOTAL_STAT_HASH } from 'app/search/d2-known-values';
+import InGameLoadoutIcon from 'app/loadout/ingame/InGameLoadoutIcon';
 import { quoteFilterString } from 'app/search/query-parser';
 import { statHashByName } from 'app/search/search-filter-values';
 import { getColor, percent } from 'app/shell/formatters';
@@ -53,10 +54,11 @@ import {
   getWeaponArchetype,
   getWeaponArchetypeSocket,
   isEmptyArmorModSocket,
+  isEnhancedPerk,
   isUsedArmorModSocket,
 } from 'app/utils/socket-utils';
+import { LookupTable } from 'app/utils/util-types';
 import { InventoryWishListRoll } from 'app/wishlists/wishlists';
-import { DestinyClass } from 'bungie-api-ts/destiny2';
 import clsx from 'clsx';
 import { D2EventInfo } from 'data/d2/d2-event-info';
 import { StatHashes } from 'data/d2/generated-enums';
@@ -64,6 +66,7 @@ import shapedOverlay from 'images/shapedOverlay.png';
 import _ from 'lodash';
 import React from 'react';
 import { useSelector } from 'react-redux';
+import { createCustomStatColumns } from './CustomStatColumns';
 // eslint-disable-next-line css-modules/no-unused-class
 import styles from './ItemTable.m.scss';
 import { ColumnDefinition, ColumnGroup, SortDirection, Value } from './table-types';
@@ -76,7 +79,7 @@ export function getColumnSelectionId(column: ColumnDefinition) {
 }
 
 // Some stat labels are long. This lets us replace them with i18n
-export const statLabels: Record<number, string | undefined> = {
+export const statLabels: LookupTable<StatHashes, string> = {
   [StatHashes.RoundsPerMinute]: tl('Organizer.Stats.RPM'),
   [StatHashes.ReloadSpeed]: tl('Organizer.Stats.Reload'),
   [StatHashes.AimAssistance]: tl('Organizer.Stats.Aim'),
@@ -96,16 +99,17 @@ export function getColumns(
   statHashes: {
     [statHash: number]: StatInfo;
   },
-  classType: DestinyClass,
-  itemInfos: ItemInfos,
+  getTag: (item: DimItem) => TagValue | undefined,
+  getNotes: (item: DimItem) => string | undefined,
   wishList: (item: DimItem) => InventoryWishListRoll | undefined,
   hasWishList: boolean,
-  customTotalStat: number[],
+  customStatDefs: CustomStatDef[],
   loadoutsByItem: LoadoutsByItem,
   newItems: Set<string>,
   destinyVersion: DestinyVersion,
   onPlugClicked: (value: { item: DimItem; socket: DimSocket; plugHash: number }) => void
 ): ColumnDefinition[] {
+  const customStatHashes = customStatDefs.map((c) => c.statHash);
   const statsGroup: ColumnGroup = {
     id: 'stats',
     header: t('Organizer.Columns.Stats'),
@@ -123,8 +127,8 @@ export function getColumns(
   const statColumns: ColumnWithStat[] = _.sortBy(
     _.compact(
       Object.entries(statHashes).map(([statHashStr, statInfo]): ColumnWithStat | undefined => {
-        const statHash = parseInt(statHashStr, 10);
-        if (statHash === CUSTOM_TOTAL_STAT_HASH) {
+        const statHash = parseInt(statHashStr, 10) as StatHashes;
+        if (customStatHashes.includes(statHash)) {
           // Exclude custom total, it has its own column
           return undefined;
         }
@@ -158,11 +162,14 @@ export function getColumns(
             return <ItemStatValue stat={stat} item={item} />;
           },
           defaultSort: statInfo.lowerBetter ? SortDirection.ASC : SortDirection.DESC,
-          filter: (value) => `stat:${_.invert(statHashByName)[statHash]}:>=${value}`,
+          filter: (value) => {
+            const statName = _.invert(statHashByName)[statHash];
+            return `stat:${statName}:${statName === 'rof' ? '=' : '>='}${value}`;
+          },
         };
       })
     ),
-    (s) => statAllowList.indexOf(s.statHash)
+    (s) => getStatSortOrder(s.statHash)
   );
 
   const isGhost = itemsType === 'ghost';
@@ -221,7 +228,7 @@ export function getColumns(
               },
             };
           }),
-          (s) => statAllowList.indexOf(s.statHash)
+          (s) => getStatSortOrder(s.statHash)
         )
       : [];
 
@@ -235,6 +242,8 @@ export function getColumns(
   function c<V extends Value>(columnDef: ColumnDefinition<V>): ColumnDefinition<V> {
     return columnDef;
   }
+
+  const customStats = createCustomStatColumns(customStatDefs);
 
   const columns: ColumnDefinition[] = _.compact([
     c({
@@ -283,12 +292,12 @@ export function getColumns(
       (destinyVersion === 2 || isWeapon) &&
       c({
         id: 'dmg',
-        header: isArmor ? t('Organizer.Columns.Element') : t('Organizer.Columns.Damage'),
+        header: t('Organizer.Columns.Damage'),
         value: (item) => item.element?.displayProperties.name,
         cell: (_val, item) => <ElementIcon className={styles.inlineIcon} element={item.element} />,
         filter: (_val, item) => `is:${getItemDamageShortName(item)}`,
       }),
-    isArmor &&
+    (isArmor || isGhost) &&
       destinyVersion === 2 &&
       c({
         id: 'energy',
@@ -309,7 +318,7 @@ export function getColumns(
     c({
       id: 'tag',
       header: t('Organizer.Columns.Tag'),
-      value: (item) => getTag(item, itemInfos),
+      value: (item) => getTag(item) ?? '',
       cell: (value) => value && <TagIcon tag={value} />,
       sort: compareBy((tag) => (tag && tagConfig[tag] ? tagConfig[tag].sortOrder : 1000)),
       filter: (value) => `tag:${value || 'none'}`,
@@ -510,21 +519,7 @@ export function getColumns(
         cell: (value) => <span style={getColor(value, 'color')}>{value}%</span>,
         filter: (value) => `quality:>=${value}`,
       }),
-    destinyVersion === 2 &&
-      isArmor &&
-      c({
-        id: 'customstat',
-        header: (
-          <>
-            {t('Organizer.Columns.CustomTotal')}
-            <StatTotalToggle forClass={classType} readOnly={true} />
-          </>
-        ),
-        value: (item) =>
-          _.sumBy(item.stats, (s) => (customTotalStat.includes(s.statHash) ? s.base : 0)),
-        defaultSort: SortDirection.DESC,
-        filter: (value) => `stat:custom:>=${value}`,
-      }),
+    ...(destinyVersion === 2 && isArmor ? customStats : []),
     destinyVersion === 2 &&
       isWeapon &&
       c({
@@ -569,21 +564,38 @@ export function getColumns(
     c({
       id: 'loadouts',
       header: t('Organizer.Columns.Loadouts'),
-      value: () => 0,
+      value: (item) =>
+        loadoutsByItem[item.id]
+          ?.map((l) => l.loadout.name)
+          .sort()
+          .join(','),
       cell: (_val, item) => {
         const inloadouts = loadoutsByItem[item.id];
         return (
           inloadouts &&
-          inloadouts.length > 0 &&
-          inloadouts.map((l) => <div key={l.loadout.id}>{l.loadout.name}</div>)
+          inloadouts.length > 0 && (
+            <LoadoutsCell
+              loadouts={_.sortBy(
+                inloadouts.map((l) => l.loadout),
+                (l) => l.name
+              )}
+              owner={item.owner}
+            />
+          )
         );
       },
-      noSort: true,
+      filter: (value, item) => {
+        if (typeof value === 'string') {
+          const inloadouts = loadoutsByItem[item.id];
+          const loadout = inloadouts?.find(({ loadout }) => loadout.id === value);
+          return loadout && `inloadout:${quoteFilterString(loadout.loadout.name)}`;
+        }
+      },
     }),
     c({
       id: 'notes',
       header: t('Organizer.Columns.Notes'),
-      value: (item) => getNotes(item, itemInfos) ?? '',
+      value: (item) => getNotes(item) ?? '',
       cell: (_val, item) => <NotesArea item={item} minimal={true} />,
       gridWidth: 'minmax(200px, 1fr)',
       filter: (value) => `notes:${quoteFilterString(value)}`,
@@ -600,6 +612,38 @@ export function getColumns(
   ]);
 
   return columns;
+}
+
+function LoadoutsCell({
+  loadouts,
+  owner,
+}: {
+  loadouts: (Loadout | InGameLoadout)[];
+  owner: string;
+}) {
+  return (
+    <>
+      {loadouts.map((loadout) => (
+        <div key={loadout.id} className={styles.loadout}>
+          {isInGameLoadout(loadout) ? (
+            <a data-perk-name={loadout.id}>
+              {isInGameLoadout(loadout) && <InGameLoadoutIcon loadout={loadout} />}
+              {loadout.name}
+            </a>
+          ) : (
+            <a
+              data-perk-name={loadout.id}
+              onClick={(e: React.MouseEvent) =>
+                !e.shiftKey && editLoadout(loadout, owner, { isNew: false })
+              }
+            >
+              {loadout.name}
+            </a>
+          )}
+        </div>
+      ))}
+    </>
+  );
 }
 
 function PerksCell({
@@ -663,6 +707,7 @@ function PerksCell({
                   [styles.perkSelected]:
                     socket.isPerk && socket.plugOptions.length > 1 && p === socket.plugged,
                   [styles.perkSelectable]: socket.plugOptions.length > 1,
+                  [styles.enhancedArrow]: isEnhancedPerk(p.plugDef),
                 })}
                 data-perk-name={p.plugDef.displayProperties.name}
                 onClick={

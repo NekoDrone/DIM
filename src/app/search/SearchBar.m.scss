@@ -29,7 +29,7 @@
     top: calc(100% + 1px);
     overflow-y: auto;
     overscroll-behavior: none;
-    max-height: calc(var(--viewport-height) - var(--header-height));
+    max-height: calc(var(--viewport-height) - var(--header-height)) !important;
   }
 }
 
@@ -63,6 +63,30 @@
   color: #999;
 }
 
+.armoryItemIcon {
+  margin-right: 6px;
+  margin-top: 5px;
+  width: 24px;
+  height: 24px;
+}
+
+.armorySheet {
+  max-width: 900px;
+  margin: 0 auto;
+  z-index: 14; // higher than item popup
+
+  :global(.sheet-close) {
+    right: 16px;
+  }
+}
+
+.openInArmoryLabel {
+  font-style: italic;
+  color: grey;
+  margin-left: 2px;
+  margin-right: 4px;
+}
+
 .deleteIcon {
   composes: resetButton from '../dim-ui/common.m.scss';
   font-size: 10px !important;
@@ -70,6 +94,7 @@
   color: #999;
   padding: 0 2px;
   visibility: hidden;
+
   @media (hover: none) {
     visibility: visible;
   }

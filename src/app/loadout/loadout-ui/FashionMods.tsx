@@ -1,11 +1,10 @@
 import { PressTip } from 'app/dim-ui/PressTip';
 import { t } from 'app/i18next-t';
-import { PluggableInventoryItemDefinition } from 'app/inventory/item-types';
 import { DefItemIcon } from 'app/inventory/ItemIcon';
+import { PluggableInventoryItemDefinition } from 'app/inventory/item-types';
 import { unlockedPlugSetItemsSelector } from 'app/inventory/selectors';
 import { useD2Definitions } from 'app/manifest/selectors';
 import { DEFAULT_ORNAMENTS, DEFAULT_SHADER } from 'app/search/d2-known-values';
-import { RootState } from 'app/store/types';
 import clsx from 'clsx';
 import { PlugCategoryHashes } from 'data/d2/generated-enums';
 import { useSelector } from 'react-redux';
@@ -21,9 +20,7 @@ export function FashionMods({
   storeId?: string;
 }) {
   const defs = useD2Definitions()!;
-  const unlockedPlugSetItems = useSelector((state: RootState) =>
-    unlockedPlugSetItemsSelector(state, storeId)
-  );
+  const unlockedPlugSetItems = useSelector(unlockedPlugSetItemsSelector(storeId));
   const isShader = (m: number) =>
     defs.InventoryItem.get(m)?.plug?.plugCategoryHash === PlugCategoryHashes.Shader;
   const shader = modsForBucket.find(isShader);
@@ -46,11 +43,13 @@ export function FashionMods({
       <PlugDef
         className={clsx({ [styles.missingItem]: !canSlotShader })}
         plug={(shaderItem ?? defaultShader) as PluggableInventoryItemDefinition}
+        forClassType={undefined}
       />
       {ornamentItem ? (
         <PlugDef
           className={clsx({ [styles.missingItem]: !canSlotOrnament })}
           plug={ornamentItem as PluggableInventoryItemDefinition}
+          forClassType={undefined}
         />
       ) : (
         <PressTip tooltip={<div>{t('FashionDrawer.NoPreference')}</div>}>

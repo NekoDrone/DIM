@@ -1,10 +1,12 @@
 import { defaultSettings, Settings as DimApiSettings } from '@destinyitemmanager/dim-api-types';
-import { defaultLanguage } from 'app/i18n';
+import { defaultLanguage, DimLanguage } from 'app/i18n';
 
 /**
  * We extend the settings interface so we can try out new settings before committing them to dim-api-types
  */
 export interface Settings extends DimApiSettings {
+  language: DimLanguage;
+
   /** supplements itemSortOrderCustom by allowing each sort to be reversed */
   itemSortReversals: string[];
 
@@ -22,6 +24,9 @@ export interface Settings extends DimApiSettings {
 
   /** Automatically sync lock status with tag */
   readonly autoLockTagged: boolean;
+
+  /** Add font mods' runtime stat boosts to build stats */
+  readonly loIncludeFontModStats: boolean;
 }
 
 export const initialSettingsState: Settings = {
@@ -32,4 +37,6 @@ export const initialSettingsState: Settings = {
   compareWeaponMasterwork: false,
   itemFeedWatermark: '0',
   autoLockTagged: false,
+  customStats: [],
+  loIncludeFontModStats: false,
 };
